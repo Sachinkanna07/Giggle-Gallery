@@ -37,7 +37,6 @@ export function DiscoveryDialog({ open, onOpenChange, onComplete }: Props) {
 
   useEffect(() => {
     if (step !== 5) return;
-    setLoadingLine(0);
     const lineTimers = [1, 2, 3].map((line) => window.setTimeout(() => setLoadingLine(line), line * 430));
     const doneTimer = window.setTimeout(() => {
       onComplete(preferences);
@@ -109,7 +108,7 @@ export function DiscoveryDialog({ open, onOpenChange, onComplete }: Props) {
 
             <div className="mt-10 flex justify-between gap-3">
               <button onClick={() => setStep(Math.max(0, step - 1))} disabled={step === 0} className="inline-flex items-center gap-2 rounded-full px-4 py-3 text-sm text-white/60 transition hover:text-white disabled:invisible"><ArrowLeft size={16} /> Back</button>
-              <button onClick={() => setStep(step + 1)} className="inline-flex items-center gap-3 rounded-full bg-ivory px-6 py-3.5 text-sm font-semibold text-ink transition hover:bg-cobalt-light">
+              <button onClick={() => { if (step === 4) setLoadingLine(0); setStep(step + 1); }} className="inline-flex items-center gap-3 rounded-full bg-ivory px-6 py-3.5 text-sm font-semibold text-ink transition hover:bg-cobalt-light">
                 {step === 4 ? "Create my gallery" : "Continue"} {step === 4 ? <Sparkles size={16} /> : <ArrowRight size={16} />}
               </button>
             </div>

@@ -61,7 +61,7 @@
 
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; background: var(--ink); }
-body { margin: 0; background: var(--background); color: var(--foreground); font-family: Arial, Helvetica, sans-serif; }
+body { margin: 0; background: var(--background); color: var(--foreground); font-family: Arial, Helvetica, sans-serif; font-size: 1rem; line-height: 1.5; }
 button, a { -webkit-tap-highlight-color: transparent; }
 button:focus-visible, a:focus-visible { outline: 2px solid var(--cobalt-light); outline-offset: 4px; }
 a { color: inherit; text-decoration: none; }
@@ -103,6 +103,8 @@ button { cursor: pointer; }
 .field { width: 100%; min-width: 0; border: 1px solid rgba(255,255,255,.13); border-radius: .7rem; background: rgba(255,255,255,.03); padding: .9rem 1rem; color: white; font-size: .875rem; outline: none; transition: border-color .2s ease; }
 .field::placeholder { color: rgba(255,255,255,.3); }
 .field:focus { border-color: var(--cobalt-light); }
+.form-label { display: block; color: rgba(255,255,255,.72); font-size: .875rem; font-weight: 600; }
+.field option { background: #0d1118; color: white; }
 .mobile-nav { display: flex; min-height: 3.75rem; flex-direction: column; align-items: center; justify-content: center; gap: .25rem; color: rgba(255,255,255,.6); font-size: .62rem; }
 .mobile-nav:active { color: var(--cobalt-light); }
 

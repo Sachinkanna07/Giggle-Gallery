@@ -54,7 +54,7 @@ export function ArtworkCard({ artwork, liked, saved, reason, onLike, onSave, onV
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="font-serif text-[1.65rem] leading-tight tracking-[-.035em]">{artwork.title}</h3>
-            <p className="mt-1 text-sm text-white/55">{artwork.artist} · {artwork.year}</p>
+            <p className="mt-1 text-sm text-white/55">{artwork.artist} · {artwork.year} · {artwork.likes.toLocaleString("en-IN")} likes</p>
           </div>
           <span className="pt-1 text-sm font-semibold">{formatPrice(artwork.price)}</span>
         </div>

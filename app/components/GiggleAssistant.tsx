@@ -4,12 +4,12 @@ import Image from "next/image";
 import { FormEvent, useMemo, useState } from "react";
 import { ArrowUp, MessageCircle, Sparkles } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Artwork, artworks, formatPrice, scoreArtwork } from "../data";
+import { Artwork, formatPrice, scoreArtwork } from "../data";
 
-type Props = { onView: (artwork: Artwork) => void };
+type Props = { artworks: Artwork[]; onView: (artwork: Artwork) => void };
 const prompts = ["Show me peaceful blue art", "Dark surreal art under ₹5,000", "Something warm for my bedroom"];
 
-export function GiggleAssistant({ onView }: Props) {
+export function GiggleAssistant({ artworks, onView }: Props) {
   const [query, setQuery] = useState("");
   const [submitted, setSubmitted] = useState("Show me peaceful blue art");
   const keywords = useMemo(() => submitted.toLowerCase().replace(/[₹,]/g, "").split(/\s+/).filter((word) => word.length > 3), [submitted]);
@@ -43,7 +43,7 @@ export function GiggleAssistant({ onView }: Props) {
           <div className="mt-5 grid gap-3 sm:grid-cols-3">
             {results.map((artwork) => (
               <button key={artwork.id} onClick={() => onView(artwork)} className="group flex gap-3 rounded-xl border border-white/10 p-3 text-left transition hover:border-white/30 hover:bg-white/[.03] sm:block">
-                <div className="relative aspect-square w-20 shrink-0 overflow-hidden sm:w-full"><Image src={artwork.image} alt="" fill className="object-cover transition duration-500 group-hover:scale-105" style={{ objectPosition: artwork.imagePosition ?? "center" }} /></div>
+                <div className="relative aspect-square w-20 shrink-0 overflow-hidden sm:w-full"><Image src={artwork.image} alt="" fill sizes="(max-width: 640px) 80px, 280px" className="object-cover transition duration-500 group-hover:scale-105" style={{ objectPosition: artwork.imagePosition ?? "center" }} /></div>
                 <div className="sm:pt-3"><h3 className="font-serif text-xl">{artwork.title}</h3><p className="mt-1 text-xs text-white/45">{artwork.artist} · {formatPrice(artwork.price)}</p></div>
               </button>
             ))}
