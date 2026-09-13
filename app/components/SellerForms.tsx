@@ -38,7 +38,7 @@ export function SellerApplicationForm({ email, name }: { email?: string | null; 
   );
 }
 
-export function ArtworkUploadForm() {
+export function ArtworkUploadForm({ sellerId }: { sellerId: string }) {
   const [state, submit, pending] = useActionState(createArtwork, initialState);
   const [uploading, setUploading] = useState(false);
   async function action(formData: FormData) {
@@ -46,8 +46,11 @@ export function ArtworkUploadForm() {
     if (!(file instanceof File) || !file.size) return;
     setUploading(true);
     try {
-      const blob = await upload(`artworks/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`, file, { access: "public", handleUploadUrl: "/api/uploads/artwork" });
+      const intentId = crypto.randomUUID();
+      const safeFilename = file.name.replace(/[^a-zA-Z0-9._-]/g, "-").slice(-150) || "artwork-image";
+      const blob = await upload(`artworks/${sellerId}/${intentId}/${safeFilename}`, file, { access: "public", handleUploadUrl: "/api/uploads/artwork", clientPayload: JSON.stringify({ intentId }) });
       formData.set("imageUrl", blob.url);
+      formData.set("uploadIntentId", intentId);
       submit(formData);
     } finally {
       setUploading(false);
@@ -58,6 +61,7 @@ export function ArtworkUploadForm() {
       <Status state={state} />
       <label className="form-label sm:col-span-2">Artwork image<input name="image" type="file" accept="image/jpeg,image/png,image/webp" required className="field mt-2 file:mr-4 file:rounded-full file:border-0 file:bg-ivory file:px-4 file:py-2 file:text-ink" /></label>
       <input name="imageUrl" type="hidden" />
+      <input name="uploadIntentId" type="hidden" />
       <label className="form-label sm:col-span-2">Title<input name="title" required className="field mt-2" /></label>
       <label className="form-label sm:col-span-2">Description<textarea name="description" required minLength={40} rows={5} className="field mt-2" /></label>
       <label className="form-label sm:col-span-2">Artist statement<textarea name="artistStatement" rows={4} className="field mt-2" /></label>

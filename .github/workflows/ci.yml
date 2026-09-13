@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      AUTH_SECRET: ci-only-secret-value-that-is-never-used-in-production
+      AUTH_GOOGLE_ID: ci-google-client-id
+      AUTH_GOOGLE_SECRET: ci-google-client-secret
+      NEXT_PUBLIC_APP_URL: https://ci.example.invalid
+      BLOB_READ_WRITE_TOKEN: ci-blob-token
+      RAZORPAY_KEY_ID: rzp_test_ci
+      RAZORPAY_KEY_SECRET: ci-razorpay-secret
+      RAZORPAY_WEBHOOK_SECRET: ci-webhook-secret
+      IDENTITY_HASH_PEPPER: ci-only-identity-hash-pepper-value
+      GST_RATE_BPS: "0"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build

@@ -7,6 +7,8 @@ import { getDb } from "@/db";
 import {
   artistApplications,
   artistProfiles,
+  artworkImages,
+  artworkUploads,
   artworks,
   cartItems,
   carts,
@@ -22,6 +24,7 @@ import {
   orders,
 } from "@/db/schema";
 import { requireAdmin, requireSeller, requireUser } from "@/lib/authz";
+import { isApprovedArtworkBlobUrl } from "@/lib/blob-validation";
 import { users } from "@/db/schema";
 
 const idSchema = z.string().uuid();
@@ -31,6 +34,9 @@ export type MutationResult = { ok: true; active?: boolean; quantity?: number; id
 function friendlyError(error: unknown) {
   if (error instanceof Error && error.message === "AUTH_REQUIRED") return "Sign in with Google to continue.";
   if (error instanceof Error && error.message === "SELLER_REQUIRED") return "An approved seller account is required.";
+  if (error instanceof Error && error.message === "RATE_LIMITED") return "Too many requests. Please wait a moment and try again.";
+  if (error instanceof Error && error.message === "UPLOAD_NOT_VERIFIED") return "The artwork image upload is missing or expired. Please upload it again.";
+  if (error instanceof Error && error.message.includes("DATABASE_URL")) return "Account features are being set up. Please try again shortly.";
   return "We could not save that change. Please try again.";
 }
 
@@ -263,6 +269,7 @@ const artworkSchema = z.object({
   stock: z.coerce.number().int().min(1).max(999),
   colors: z.string().transform((value) => value.split(",").map((part) => part.trim().toLowerCase()).filter(Boolean).slice(0, 12)),
   imageUrl: z.string().url(),
+  uploadIntentId: z.string().uuid(),
   ownershipDeclaration: z.literal("confirmed"),
 });
 
@@ -271,13 +278,17 @@ export async function createArtwork(_: unknown, formData: FormData) {
     const user = await requireSeller();
     const parsed = artworkSchema.safeParse(Object.fromEntries(formData));
     if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Check the artwork details." };
-    const [artist] = await getDb().select({ id: artistProfiles.id }).from(artistProfiles).where(eq(artistProfiles.userId, user.id)).limit(1);
-    if (!artist) return { ok: false, message: "Complete seller approval before adding artwork." };
     const slug = `${parsed.data.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}-${crypto.randomUUID().slice(0, 8)}`;
     const db = getDb();
-    const [created] = await db.insert(artworks).values({ artistId: artist.id, slug, title: parsed.data.title, description: parsed.data.description, artistStatement: parsed.data.artistStatement, price: parsed.data.price.toFixed(2), currency: parsed.data.currency, medium: parsed.data.medium, year: parsed.data.year, widthCm: parsed.data.widthCm.toFixed(2), heightCm: parsed.data.heightCm.toFixed(2), ownershipDeclaration: "Seller confirmed original ownership or licensed resale rights.", type: parsed.data.type, stock: parsed.data.stock, colors: parsed.data.colors, status: "PENDING_REVIEW" }).returning({ id: artworks.id });
-    const { artworkImages } = await import("@/db/schema");
-    await db.insert(artworkImages).values({ artworkId: created.id, url: parsed.data.imageUrl, altText: `${parsed.data.title} by the submitting artist` });
+    await db.transaction(async (tx) => {
+      const [artist] = await tx.select({ id: artistProfiles.id }).from(artistProfiles).where(eq(artistProfiles.userId, user.id)).limit(1);
+      if (!artist) throw new Error("SELLER_REQUIRED");
+      const [upload] = await tx.select({ id: artworkUploads.id, pathname: artworkUploads.pathname, url: artworkUploads.url, status: artworkUploads.status, expiresAt: artworkUploads.expiresAt }).from(artworkUploads).where(and(eq(artworkUploads.id, parsed.data.uploadIntentId), eq(artworkUploads.userId, user.id))).limit(1).for("update");
+      if (!upload || upload.status !== "UPLOADED" || upload.expiresAt < new Date() || upload.url !== parsed.data.imageUrl || !isApprovedArtworkBlobUrl(parsed.data.imageUrl, upload.pathname)) throw new Error("UPLOAD_NOT_VERIFIED");
+      const [created] = await tx.insert(artworks).values({ artistId: artist.id, slug, title: parsed.data.title, description: parsed.data.description, artistStatement: parsed.data.artistStatement, price: parsed.data.price.toFixed(2), currency: parsed.data.currency, medium: parsed.data.medium, year: parsed.data.year, widthCm: parsed.data.widthCm.toFixed(2), heightCm: parsed.data.heightCm.toFixed(2), ownershipDeclaration: "Seller confirmed original ownership or licensed resale rights.", type: parsed.data.type, stock: parsed.data.stock, colors: parsed.data.colors, status: "PENDING_REVIEW" }).returning({ id: artworks.id });
+      await tx.insert(artworkImages).values({ artworkId: created.id, url: parsed.data.imageUrl, altText: `${parsed.data.title} by the submitting artist` });
+      await tx.update(artworkUploads).set({ artworkId: created.id, status: "ATTACHED", attachedAt: new Date(), updatedAt: new Date() }).where(and(eq(artworkUploads.id, upload.id), eq(artworkUploads.status, "UPLOADED")));
+    });
     revalidatePath("/seller");
     return { ok: true, message: "Artwork submitted for review." };
   } catch (error) {
@@ -289,15 +300,20 @@ export async function reviewSellerApplication(applicationId: string, decision: "
   try {
     const admin = await requireAdmin();
     const id = idSchema.parse(applicationId);
+    const validatedDecision = z.enum(["APPROVED", "REJECTED", "NEEDS_REVIEW"]).parse(decision);
     const db = getDb();
-    const [application] = await db.select().from(artistApplications).where(eq(artistApplications.id, id)).limit(1);
-    if (!application) return { ok: false, error: "Application not found." };
-    await db.update(artistApplications).set({ status: decision, reviewedBy: admin.id, reviewedAt: new Date(), updatedAt: new Date() }).where(eq(artistApplications.id, id));
-    if (decision === "APPROVED") {
-      const slug = `${application.displayName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}-${application.id.slice(0, 6)}`;
-      await db.insert(artistProfiles).values({ userId: application.userId, slug, displayName: application.displayName, biography: application.biography, artistStatement: application.artistStatement, location: [application.city, application.state, application.country].filter(Boolean).join(", "), styles: [application.artStyle], specialization: application.specialization, experienceYears: application.experienceYears, portfolioUrl: application.portfolioUrl, socialUrl: application.socialUrl, preferredCurrency: application.preferredCurrency, sellerType: application.sellerType, verified: true }).onConflictDoUpdate({ target: artistProfiles.userId, set: { displayName: application.displayName, biography: application.biography, artistStatement: application.artistStatement, styles: [application.artStyle], verified: true, updatedAt: new Date() } });
-      await db.update(users).set({ role: "SELLER", updatedAt: new Date() }).where(eq(users.id, application.userId));
-    }
+    const found = await db.transaction(async (tx) => {
+      const [application] = await tx.select().from(artistApplications).where(eq(artistApplications.id, id)).limit(1).for("update");
+      if (!application) return false;
+      await tx.update(artistApplications).set({ status: validatedDecision, reviewedBy: admin.id, reviewedAt: new Date(), updatedAt: new Date() }).where(eq(artistApplications.id, id));
+      if (validatedDecision === "APPROVED") {
+        const slug = `${application.displayName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}-${application.id.slice(0, 6)}`;
+        await tx.insert(artistProfiles).values({ userId: application.userId, slug, displayName: application.displayName, biography: application.biography, artistStatement: application.artistStatement, location: [application.city, application.state, application.country].filter(Boolean).join(", "), styles: [application.artStyle], specialization: application.specialization, experienceYears: application.experienceYears, portfolioUrl: application.portfolioUrl, socialUrl: application.socialUrl, preferredCurrency: application.preferredCurrency, sellerType: application.sellerType, verified: true }).onConflictDoUpdate({ target: artistProfiles.userId, set: { displayName: application.displayName, biography: application.biography, artistStatement: application.artistStatement, styles: [application.artStyle], verified: true, updatedAt: new Date() } });
+        await tx.update(users).set({ role: "SELLER", updatedAt: new Date() }).where(eq(users.id, application.userId));
+      }
+      return true;
+    });
+    if (!found) return { ok: false, error: "Application not found." };
     revalidatePath("/admin");
     revalidatePath("/seller");
     return { ok: true };
@@ -308,7 +324,7 @@ export async function reviewSellerApplication(applicationId: string, decision: "
 
 export async function reviewSellerApplicationForm(formData: FormData): Promise<void> {
   const applicationId = String(formData.get("applicationId") ?? "");
-  const decision = String(formData.get("decision") ?? "") as "APPROVED" | "REJECTED" | "NEEDS_REVIEW";
+  const decision = z.enum(["APPROVED", "REJECTED", "NEEDS_REVIEW"]).parse(String(formData.get("decision") ?? ""));
   await reviewSellerApplication(applicationId, decision);
 }
 

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   check,
   index,
@@ -28,6 +29,12 @@ export const availabilityStatus = pgEnum("availability_status", ["AVAILABLE", "R
 export const orderStatus = pgEnum("order_status", ["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED", "REFUNDED"]);
 export const paymentStatus = pgEnum("payment_status", ["CREATED", "PENDING", "PAID", "FAILED", "REFUNDED", "CANCELLED"]);
 export const payoutStatus = pgEnum("payout_status", ["PENDING", "PROCESSING", "PAID", "FAILED", "ON_HOLD"]);
+export const webhookEventStatus = pgEnum("webhook_event_status", ["PROCESSING", "PROCESSED", "FAILED"]);
+export const artworkUploadStatus = pgEnum("artwork_upload_status", ["AUTHORIZED", "UPLOADED", "ATTACHED", "ABANDONED"]);
+export const accountStatus = pgEnum("account_status", ["ACTIVE", "SUSPENDED", "DISABLED", "PENDING_DELETION"]);
+export const verificationType = pgEnum("verification_type", ["EMAIL", "PHONE"]);
+export const verificationEventStatus = pgEnum("verification_event_status", ["PENDING", "VERIFIED", "EXPIRED", "FAILED", "CANCELLED"]);
+export const verificationPurpose = pgEnum("verification_purpose", ["SIGN_IN", "LINK", "CHANGE_CONTACT", "RECOVERY"]);
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
@@ -35,10 +42,18 @@ export const users = pgTable("users", {
   email: text("email").notNull(),
   emailVerified: timestamp("email_verified", { withTimezone: true }),
   image: text("image"),
+  phoneE164: text("phone_e164"),
+  phoneVerifiedAt: timestamp("phone_verified_at", { withTimezone: true }),
   role: userRole("role").default("BUYER").notNull(),
+  accountStatus: accountStatus("account_status").default("ACTIVE").notNull(),
   disabled: boolean("disabled").default(false).notNull(),
   ...timestamps,
-}, (table) => [uniqueIndex("users_email_unique").on(table.email)]);
+}, (table) => [
+  uniqueIndex("users_email_unique").on(table.email),
+  uniqueIndex("users_verified_email_normalized_unique").on(sql`lower(${table.email})`).where(sql`${table.emailVerified} is not null`),
+  uniqueIndex("users_verified_phone_unique").on(table.phoneE164).where(sql`${table.phoneVerifiedAt} is not null`),
+  index("users_account_status_idx").on(table.accountStatus),
+]);
 
 export const accounts = pgTable("accounts", {
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -68,6 +83,28 @@ export const verificationTokens = pgTable("verification_tokens", {
   token: text("token").notNull(),
   expires: timestamp("expires", { withTimezone: true }).notNull(),
 }, (table) => [primaryKey({ columns: [table.identifier, table.token] })]);
+
+export const verificationEvents = pgTable("verification_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  // Nullable for a future pre-account SIGN_IN challenge; linked-account
+  // verification always supplies the authenticated user id.
+  userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+  type: verificationType("type").notNull(),
+  destinationHash: text("destination_hash").notNull(),
+  challengeHash: text("challenge_hash"),
+  status: verificationEventStatus("status").default("PENDING").notNull(),
+  attempts: integer("attempts").default(0).notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  provider: text("provider").notNull(),
+  purpose: verificationPurpose("purpose").notNull(),
+}, (table) => [
+  index("verification_events_user_status_idx").on(table.userId, table.status, table.createdAt),
+  index("verification_events_destination_status_idx").on(table.destinationHash, table.status),
+  index("verification_events_expiry_idx").on(table.expiresAt),
+  check("verification_events_attempts_nonnegative", sql`${table.attempts} >= 0`),
+]);
 
 export const profiles = pgTable("profiles", {
   userId: text("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
@@ -217,6 +254,25 @@ export const artworkImages = pgTable("artwork_images", {
   ...timestamps,
 }, (table) => [uniqueIndex("artwork_images_artwork_order_unique").on(table.artworkId, table.sortOrder)]);
 
+export const artworkUploads = pgTable("artwork_uploads", {
+  id: uuid("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  artworkId: uuid("artwork_id").references(() => artworks.id, { onDelete: "set null" }),
+  pathname: text("pathname").notNull(),
+  url: text("url"),
+  contentType: text("content_type"),
+  sizeBytes: bigint("size_bytes", { mode: "number" }),
+  status: artworkUploadStatus("status").default("AUTHORIZED").notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  attachedAt: timestamp("attached_at", { withTimezone: true }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  ...timestamps,
+}, (table) => [
+  uniqueIndex("artwork_uploads_url_unique").on(table.url),
+  uniqueIndex("artwork_uploads_artwork_unique").on(table.artworkId),
+  index("artwork_uploads_user_status_idx").on(table.userId, table.status, table.createdAt),
+]);
+
 export const artworkTags = pgTable("artwork_tags", {
   artworkId: uuid("artwork_id").notNull().references(() => artworks.id, { onDelete: "cascade" }),
   tagId: uuid("tag_id").notNull().references(() => tags.id, { onDelete: "cascade" }),
@@ -340,6 +396,30 @@ export const payments = pgTable("payments", {
   ...timestamps,
 }, (table) => [uniqueIndex("payments_provider_order_unique").on(table.providerOrderId), uniqueIndex("payments_provider_payment_unique").on(table.providerPaymentId), index("payments_order_idx").on(table.orderId)]);
 
+export const paymentAttempts = pgTable("payment_attempts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  orderId: uuid("order_id").notNull().references(() => orders.id, { onDelete: "cascade" }),
+  provider: text("provider").default("RAZORPAY").notNull(),
+  providerOrderId: text("provider_order_id").notNull(),
+  providerPaymentId: text("provider_payment_id"),
+  idempotencyKey: text("idempotency_key").notNull(),
+  attemptNumber: integer("attempt_number").default(1).notNull(),
+  amountPaise: bigint("amount_paise", { mode: "bigint" }).notNull(),
+  currency: text("currency").default("INR").notNull(),
+  status: paymentStatus("status").default("PENDING").notNull(),
+  failureCode: text("failure_code"),
+  failureReason: text("failure_reason"),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  refundedAt: timestamp("refunded_at", { withTimezone: true }),
+  ...timestamps,
+}, (table) => [
+  uniqueIndex("payment_attempts_provider_order_unique").on(table.provider, table.providerOrderId),
+  uniqueIndex("payment_attempts_provider_payment_unique").on(table.provider, table.providerPaymentId),
+  uniqueIndex("payment_attempts_idempotency_unique").on(table.idempotencyKey),
+  index("payment_attempts_order_created_idx").on(table.orderId, table.createdAt),
+  check("payment_attempts_amount_positive", sql`${table.amountPaise} > 0`),
+]);
+
 export const payouts = pgTable("payouts", {
   id: uuid("id").defaultRandom().primaryKey(),
   artistId: uuid("artist_id").notNull().references(() => artistProfiles.id, { onDelete: "restrict" }),
@@ -365,6 +445,25 @@ export const notifications = pgTable("notifications", {
   readAt: timestamp("read_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [index("notifications_user_read_created_idx").on(table.userId, table.readAt, table.createdAt)]);
+
+export const webhookEvents = pgTable("webhook_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  provider: text("provider").notNull(),
+  providerEventId: text("provider_event_id").notNull(),
+  signatureHash: text("signature_hash").notNull(),
+  bodyHash: text("body_hash").notNull(),
+  eventType: text("event_type").notNull(),
+  status: webhookEventStatus("status").default("PROCESSING").notNull(),
+  attemptCount: integer("attempt_count").default(1).notNull(),
+  receivedAt: timestamp("received_at", { withTimezone: true }).defaultNow().notNull(),
+  processingStartedAt: timestamp("processing_started_at", { withTimezone: true }).defaultNow().notNull(),
+  processedAt: timestamp("processed_at", { withTimezone: true }),
+  failureReason: text("failure_reason"),
+}, (table) => [
+  uniqueIndex("webhook_events_provider_event_unique").on(table.provider, table.providerEventId),
+  index("webhook_events_status_received_idx").on(table.status, table.receivedAt),
+  index("webhook_events_signature_hash_idx").on(table.signatureHash),
+]);
 
 export const reviews = pgTable("reviews", {
   id: uuid("id").defaultRandom().primaryKey(),

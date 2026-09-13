@@ -10,17 +10,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: hasDatabase()
     ? DrizzleAdapter(getDb(), { usersTable: users, accountsTable: accounts, sessionsTable: sessions, verificationTokensTable: verificationTokens })
     : undefined,
-  providers: [Google],
+  providers: [Google({ allowDangerousEmailAccountLinking: false })],
   session: { strategy: "jwt" },
   pages: { signIn: "/sign-in" },
   trustHost: true,
   callbacks: {
+    async signIn({ account, profile }) {
+      if (account?.provider === "google" && profile && profile.email_verified !== true) return false;
+      return true;
+    },
     async jwt({ token, user }) {
       if (user?.id) token.sub = user.id;
       if (token.sub && hasDatabase()) {
-        const [record] = await getDb().select({ role: users.role, disabled: users.disabled }).from(users).where(eq(users.id, token.sub)).limit(1);
+        const [record] = await getDb().select({ role: users.role, accountStatus: users.accountStatus, disabled: users.disabled }).from(users).where(eq(users.id, token.sub)).limit(1);
         token.role = record?.role ?? "BUYER";
-        token.disabled = record?.disabled ?? false;
+        token.accountStatus = record?.accountStatus ?? "DISABLED";
+        token.disabled = !record || record.disabled || record.accountStatus !== "ACTIVE";
+      } else {
+        token.accountStatus ??= "ACTIVE";
+        token.disabled ??= false;
       }
       return token;
     },
@@ -28,6 +36,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (session.user && token.sub) {
         session.user.id = token.sub;
         session.user.role = (token.role as "BUYER" | "SELLER" | "ADMIN") ?? "BUYER";
+        session.user.accountStatus = token.accountStatus ?? "ACTIVE";
         session.user.disabled = Boolean(token.disabled);
       }
       return session;
@@ -36,7 +45,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const path = request.nextUrl.pathname;
       const protectedRoute = ["/account", "/checkout", "/collections", "/orders", "/sell", "/seller", "/admin"].some((prefix) => path.startsWith(prefix));
       if (!protectedRoute) return true;
-      if (!session?.user || session.user.disabled) return false;
+      if (!session?.user || session.user.disabled || session.user.accountStatus !== "ACTIVE") return false;
       if (path.startsWith("/admin")) return session.user.role === "ADMIN";
       return true;
     },

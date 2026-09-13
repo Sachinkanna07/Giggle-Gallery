@@ -6,6 +6,7 @@ declare module "next-auth" {
     user: {
       id: string;
       role: "BUYER" | "SELLER" | "ADMIN";
+      accountStatus: "ACTIVE" | "SUSPENDED" | "DISABLED" | "PENDING_DELETION";
       disabled: boolean;
       name?: string | null;
       email?: string | null;
@@ -17,6 +18,7 @@ declare module "next-auth" {
 declare module "next-auth/jwt" {
   interface JWT {
     role?: "BUYER" | "SELLER" | "ADMIN";
+    accountStatus?: "ACTIVE" | "SUSPENDED" | "DISABLED" | "PENDING_DELETION";
     disabled?: boolean;
   }
 }

@@ -2,6 +2,7 @@ import "server-only";
 
 import { count, desc, eq, inArray } from "drizzle-orm";
 import { getDb, hasDatabase } from "@/db";
+import { isProductionRuntime } from "@/lib/env-schema";
 import {
   artistApplications,
   artistProfiles,
@@ -64,7 +65,10 @@ function fallbackCatalog(): MarketplaceCatalog {
 }
 
 export async function getMarketplaceCatalog(): Promise<MarketplaceCatalog> {
-  if (!hasDatabase()) return fallbackCatalog();
+  if (!hasDatabase()) {
+    if (isProductionRuntime()) throw new Error("Production catalog unavailable: DATABASE_URL is not configured.");
+    return fallbackCatalog();
+  }
   try {
     const db = getDb();
     const rows = await db
@@ -172,6 +176,7 @@ export async function getMarketplaceCatalog(): Promise<MarketplaceCatalog> {
     });
     return { artworks: mapped, artists: [...artistMap.values()], databaseReady: true };
   } catch (error) {
+    if (isProductionRuntime()) throw error;
     console.error("Database catalog unavailable; rendering the curated fallback.", error);
     return fallbackCatalog();
   }

@@ -1,10 +1,12 @@
 import "server-only";
 
 import { auth } from "@/auth";
+import { enforceServerActionRateLimit } from "@/lib/security/server-actions";
 
 export async function requireUser() {
   const session = await auth();
-  if (!session?.user?.id || session.user.disabled) throw new Error("AUTH_REQUIRED");
+  if (!session?.user?.id || session.user.disabled || session.user.accountStatus !== "ACTIVE") throw new Error("AUTH_REQUIRED");
+  await enforceServerActionRateLimit("authenticated-write", session.user.id);
   return session.user;
 }
 
