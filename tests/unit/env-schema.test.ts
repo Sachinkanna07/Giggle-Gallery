@@ -4,6 +4,7 @@ import { parseProductionEnv } from "../../lib/env-schema";
 const validEnv = {
   DATABASE_URL: "postgresql://user:password@db.example.com/gallery",
   AUTH_SECRET: "a-secure-test-secret-that-is-at-least-32-characters",
+  AUTH_URL: "https://gallery.example.com",
   AUTH_GOOGLE_ID: "google-client-id-for-test",
   AUTH_GOOGLE_SECRET: "google-client-secret-for-test",
   NEXT_PUBLIC_APP_URL: "https://gallery.example.com",
@@ -25,5 +26,21 @@ describe("production environment validation", () => {
 
   it("requires HTTPS for the production public URL", () => {
     expect(() => parseProductionEnv({ ...validEnv, NEXT_PUBLIC_APP_URL: "http://gallery.example.com" })).toThrow(/NEXT_PUBLIC_APP_URL/);
+  });
+
+  it("requires Auth.js to use the canonical production origin", () => {
+    expect(() => parseProductionEnv({ ...validEnv, AUTH_URL: "https://temporary-deployment.vercel.app" })).toThrow(/AUTH_URL/);
+  });
+
+  it("requires AUTH_URL to use HTTPS", () => {
+    expect(() => parseProductionEnv({ ...validEnv, AUTH_URL: "http://gallery.example.com" })).toThrow(/AUTH_URL/);
+  });
+
+  it.each([
+    "https://gallery.example.com/auth",
+    "https://gallery.example.com/?callback=account",
+    "https://gallery.example.com/#account",
+  ])("requires AUTH_URL to be a canonical root URL: %s", (AUTH_URL) => {
+    expect(() => parseProductionEnv({ ...validEnv, AUTH_URL })).toThrow(/AUTH_URL/);
   });
 });

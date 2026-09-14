@@ -19,6 +19,7 @@ Configure these in each deployed environment. Only `NEXT_PUBLIC_APP_URL` is safe
 | --- | --- |
 | `DATABASE_URL` | Pooled Neon PostgreSQL connection URL |
 | `AUTH_SECRET` | Random Auth.js signing secret, at least 32 characters |
+| `AUTH_URL` | Canonical HTTPS Auth.js origin with no path, query, or fragment |
 | `AUTH_GOOGLE_ID` | Google OAuth web client ID |
 | `AUTH_GOOGLE_SECRET` | Google OAuth client secret |
 | `NEXT_PUBLIC_APP_URL` | Canonical HTTPS application URL |
@@ -34,7 +35,7 @@ Never commit credentials. `.env.example` contains names and environment guidance
 ## Staging / Preview setup
 
 - Use isolated Neon and Blob resources, Razorpay test mode, and a distinct webhook secret.
-- Add the exact preview host to Google OAuth and set its HTTPS `NEXT_PUBLIC_APP_URL`.
+- Add the exact preview host to Google OAuth and set matching HTTPS `AUTH_URL` and `NEXT_PUBLIC_APP_URL` origins.
 - Apply migrations to staging, then test sign-in, seller upload, signed checkout verification, webhook replay, and the owned-order confirmation page.
 
 ## Google OAuth
@@ -45,7 +46,7 @@ Create a Google OAuth web client and add these authorized redirect URIs:
 - Preview: `https://PREVIEW_HOST/api/auth/callback/google`
 - Production: `https://YOUR_DOMAIN/api/auth/callback/google`
 
-Set `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, and a unique `AUTH_SECRET` in the matching environment. Roles and account status are loaded server-side from Postgres. Full email and phone identity flows remain deferred to later Phase 3 subphases.
+Set `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, a unique `AUTH_SECRET`, and the canonical root `AUTH_URL` in the matching environment. Roles and account status are loaded server-side from Postgres. Full email and phone identity flows remain deferred to later Phase 3 subphases.
 
 ## Identity roadmap
 

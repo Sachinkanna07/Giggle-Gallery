@@ -3,6 +3,7 @@ import { z } from "zod";
 export const requiredProductionEnvKeys = [
   "DATABASE_URL",
   "AUTH_SECRET",
+  "AUTH_URL",
   "AUTH_GOOGLE_ID",
   "AUTH_GOOGLE_SECRET",
   "NEXT_PUBLIC_APP_URL",
@@ -18,6 +19,7 @@ const nonEmpty = z.string().trim().min(1);
 export const productionEnvSchema = z.object({
   DATABASE_URL: nonEmpty.url().refine((value) => value.startsWith("postgres://") || value.startsWith("postgresql://"), "must be a PostgreSQL URL"),
   AUTH_SECRET: nonEmpty.min(32),
+  AUTH_URL: nonEmpty.url().refine((value) => value.startsWith("https://"), "must use HTTPS in production"),
   AUTH_GOOGLE_ID: nonEmpty,
   AUTH_GOOGLE_SECRET: nonEmpty,
   NEXT_PUBLIC_APP_URL: nonEmpty.url().refine((value) => value.startsWith("https://"), "must use HTTPS in production"),
@@ -27,6 +29,17 @@ export const productionEnvSchema = z.object({
   RAZORPAY_WEBHOOK_SECRET: nonEmpty,
   IDENTITY_HASH_PEPPER: nonEmpty.min(32),
   GST_RATE_BPS: z.coerce.number().int().min(0).max(10_000).default(0),
+}).superRefine((value, context) => {
+  const authUrl = new URL(value.AUTH_URL);
+  const publicUrl = new URL(value.NEXT_PUBLIC_APP_URL);
+  const isCanonicalRoot = authUrl.pathname === "/"
+    && authUrl.search === ""
+    && authUrl.hash === ""
+    && authUrl.username === ""
+    && authUrl.password === "";
+  if (authUrl.origin !== publicUrl.origin || !isCanonicalRoot) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["AUTH_URL"], message: "must be the canonical NEXT_PUBLIC_APP_URL origin" });
+  }
 });
 
 export type ProductionEnv = z.infer<typeof productionEnvSchema>;

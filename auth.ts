@@ -1,36 +1,68 @@
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { getDb, hasDatabase } from "@/db";
 import { accounts, sessions, users, verificationTokens } from "@/db/schema";
+import { withNormalizedAuthEmails } from "@/lib/auth/adapter";
+import {
+  authorizePath,
+  applyIdentityToToken,
+  existingUserCanSignIn,
+  isActiveIdentity,
+  isVerifiedGoogleProfile,
+  safeRedirectUrl,
+  shouldPersistGoogleEmailVerification,
+} from "@/lib/auth/policy";
+import { normalizeEmail } from "@/lib/identity/rules";
+
+const adapter = hasDatabase()
+  ? withNormalizedAuthEmails(
+      DrizzleAdapter(getDb(), { usersTable: users, accountsTable: accounts, sessionsTable: sessions, verificationTokensTable: verificationTokens }),
+      async (normalizedEmail) => getDb().select().from(users).where(sql`lower(${users.email}) = ${normalizedEmail}`).limit(2),
+    )
+  : undefined;
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   secret: process.env.AUTH_SECRET ?? (process.env.NODE_ENV === "development" ? "giggle-gallery-local-development-only-secret" : undefined),
-  adapter: hasDatabase()
-    ? DrizzleAdapter(getDb(), { usersTable: users, accountsTable: accounts, sessionsTable: sessions, verificationTokensTable: verificationTokens })
-    : undefined,
-  providers: [Google({ allowDangerousEmailAccountLinking: false })],
+  adapter,
+  providers: [Google({
+    clientId: process.env.AUTH_GOOGLE_ID,
+    clientSecret: process.env.AUTH_GOOGLE_SECRET,
+    allowDangerousEmailAccountLinking: false,
+  })],
   session: { strategy: "jwt" },
-  pages: { signIn: "/sign-in" },
+  pages: { signIn: "/sign-in", error: "/sign-in" },
   trustHost: true,
   callbacks: {
-    async signIn({ account, profile }) {
-      if (account?.provider === "google" && profile && profile.email_verified !== true) return false;
+    async signIn({ account, profile, user }) {
+      if (!isVerifiedGoogleProfile(account, profile)) return "/sign-in?error=google-email-unverified";
+      if (!existingUserCanSignIn(user)) return "/sign-in?error=account-unavailable";
       return true;
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, account, profile }) {
       if (user?.id) token.sub = user.id;
-      if (token.sub && hasDatabase()) {
-        const [record] = await getDb().select({ role: users.role, accountStatus: users.accountStatus, disabled: users.disabled }).from(users).where(eq(users.id, token.sub)).limit(1);
-        token.role = record?.role ?? "BUYER";
-        token.accountStatus = record?.accountStatus ?? "DISABLED";
-        token.disabled = !record || record.disabled || record.accountStatus !== "ACTIVE";
-      } else {
-        token.accountStatus ??= "ACTIVE";
-        token.disabled ??= false;
+      if (!token.sub || !hasDatabase()) return null;
+
+      const [record] = await getDb().select({
+        id: users.id,
+        email: users.email,
+        emailVerified: users.emailVerified,
+        role: users.role,
+        accountStatus: users.accountStatus,
+        disabled: users.disabled,
+      }).from(users).where(eq(users.id, token.sub)).limit(1);
+      if (!isActiveIdentity(record)) return null;
+
+      if (shouldPersistGoogleEmailVerification(account, profile, record)) {
+        const verifiedAt = new Date();
+        await getDb().update(users).set({ emailVerified: verifiedAt, updatedAt: verifiedAt }).where(and(
+          eq(users.id, record.id),
+          isNull(users.emailVerified),
+          sql`lower(${users.email}) = ${normalizeEmail(profile.email)}`,
+        ));
       }
-      return token;
+      return applyIdentityToToken(token, record);
     },
     async session({ session, token }) {
       if (session.user && token.sub) {
@@ -41,13 +73,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
       return session;
     },
+    redirect({ url, baseUrl }) {
+      return safeRedirectUrl(url, baseUrl, process.env.AUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL);
+    },
     authorized({ auth: session, request }) {
-      const path = request.nextUrl.pathname;
-      const protectedRoute = ["/account", "/checkout", "/collections", "/orders", "/sell", "/seller", "/admin"].some((prefix) => path.startsWith(prefix));
-      if (!protectedRoute) return true;
-      if (!session?.user || session.user.disabled || session.user.accountStatus !== "ACTIVE") return false;
-      if (path.startsWith("/admin")) return session.user.role === "ADMIN";
-      return true;
+      return authorizePath(request.nextUrl.pathname, session?.user);
     },
   },
 });
