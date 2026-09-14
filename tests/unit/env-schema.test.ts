@@ -13,6 +13,9 @@ const validEnv = {
   RAZORPAY_KEY_SECRET: "razorpay-test-secret",
   RAZORPAY_WEBHOOK_SECRET: "razorpay-webhook-test-secret",
   IDENTITY_HASH_PEPPER: "identity-test-pepper-with-at-least-32-characters",
+  EMAIL_PROVIDER: "resend",
+  EMAIL_FROM: "Giggle Gallery <verify@gallery.example.com>",
+  RESEND_API_KEY: "re_test_only_not_a_real_key",
 };
 
 describe("production environment validation", () => {
@@ -26,6 +29,12 @@ describe("production environment validation", () => {
 
   it("requires HTTPS for the production public URL", () => {
     expect(() => parseProductionEnv({ ...validEnv, NEXT_PUBLIC_APP_URL: "http://gallery.example.com" })).toThrow(/NEXT_PUBLIC_APP_URL/);
+  });
+
+  it("requires the supported email provider configuration", () => {
+    expect(() => parseProductionEnv({ ...validEnv, EMAIL_PROVIDER: "smtp" })).toThrow(/EMAIL_PROVIDER/);
+    expect(() => parseProductionEnv({ ...validEnv, EMAIL_FROM: "not-an-email" })).toThrow(/EMAIL_FROM/);
+    expect(() => parseProductionEnv({ ...validEnv, RESEND_API_KEY: "wrong-prefix" })).toThrow(/RESEND_API_KEY/);
   });
 
   it("requires Auth.js to use the canonical production origin", () => {

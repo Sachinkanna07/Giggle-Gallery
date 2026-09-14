@@ -111,6 +111,16 @@ describe("Google OAuth identity policy", () => {
     await expect(adapter.updateUser!({ id: "user-1", email: "" })).rejects.toThrow();
   });
 
+  it("refuses to create or update an auth identity over another verified contact email", async () => {
+    const createUser = vi.fn(async (user: AdapterUser) => user);
+    const updateUser = vi.fn(async (user: AdapterUser) => user);
+    const contactConflict = vi.fn(async (email: string, id?: string) => email === "contact@example.com" && id !== "contact-owner");
+    const adapter = withNormalizedAuthEmails({ createUser, updateUser } satisfies Adapter, async () => [], contactConflict);
+    await expect(adapter.createUser!({ id: "new-user", email: "CONTACT@example.com", emailVerified: null })).rejects.toThrow("AUTH_IDENTITY_CONFLICT");
+    await expect(adapter.updateUser!({ id: "other-user", email: "contact@example.com" })).rejects.toThrow("AUTH_IDENTITY_CONFLICT");
+    await expect(adapter.updateUser!({ id: "contact-owner", email: "contact@example.com" })).resolves.toBeTruthy();
+  });
+
   it("marks only the matching trusted Google email for verification after first login", () => {
     const pending = { ...activeBuyer, emailVerified: null };
     expect(shouldPersistGoogleEmailVerification(

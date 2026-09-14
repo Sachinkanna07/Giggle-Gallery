@@ -32,6 +32,8 @@ export async function getIdentityOverview(userId: string) {
       displayName: profiles.displayName,
       email: users.email,
       emailVerified: users.emailVerified,
+      contactEmail: users.contactEmail,
+      contactEmailVerifiedAt: users.contactEmailVerifiedAt,
       phoneE164: users.phoneE164,
       phoneVerifiedAt: users.phoneVerifiedAt,
       image: users.image,

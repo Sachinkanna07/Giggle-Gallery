@@ -1,5 +1,5 @@
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { getDb, hasDatabase } from "@/db";
@@ -20,6 +20,14 @@ const adapter = hasDatabase()
   ? withNormalizedAuthEmails(
       DrizzleAdapter(getDb(), { usersTable: users, accountsTable: accounts, sessionsTable: sessions, verificationTokensTable: verificationTokens }),
       async (normalizedEmail) => getDb().select().from(users).where(sql`lower(${users.email}) = ${normalizedEmail}`).limit(2),
+      async (normalizedEmail, userId) => {
+        const [conflict] = await getDb().select({ id: users.id }).from(users).where(and(
+          isNotNull(users.contactEmailVerifiedAt),
+          sql`lower(${users.contactEmail}) = ${normalizedEmail}`,
+          ...(userId ? [ne(users.id, userId)] : []),
+        )).limit(1);
+        return Boolean(conflict);
+      },
     )
   : undefined;
 

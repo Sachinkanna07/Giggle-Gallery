@@ -28,6 +28,9 @@ Configure these in each deployed environment. Only `NEXT_PUBLIC_APP_URL` is safe
 | `RAZORPAY_KEY_SECRET` | Razorpay server secret |
 | `RAZORPAY_WEBHOOK_SECRET` | Razorpay webhook signing secret |
 | `IDENTITY_HASH_PEPPER` | Private HMAC key for verification destination hashes |
+| `EMAIL_PROVIDER` | Transactional email adapter; Phase 3C supports `resend` |
+| `EMAIL_FROM` | Verified sender, for example `Giggle Gallery <verify@YOUR_DOMAIN>` |
+| `RESEND_API_KEY` | Server-only Resend API key |
 | `GST_RATE_BPS` | Optional GST rate in basis points; defaults to `0` |
 
 Never commit credentials. `.env.example` contains names and environment guidance only.
@@ -46,16 +49,28 @@ Create a Google OAuth web client and add these authorized redirect URIs:
 - Preview: `https://PREVIEW_HOST/api/auth/callback/google`
 - Production: `https://YOUR_DOMAIN/api/auth/callback/google`
 
-Set `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, a unique `AUTH_SECRET`, and the canonical root `AUTH_URL` in the matching environment. Roles and account status are loaded server-side from Postgres. Full email and phone identity flows remain deferred to later Phase 3 subphases.
+Set `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, a unique `AUTH_SECRET`, and the canonical root `AUTH_URL` in the matching environment. Roles and account status are loaded server-side from Postgres. Google remains the only sign-in method; authenticated contact-email verification does not add password or email-link authentication, and phone identity remains deferred.
 
-## Identity roadmap
+## Email verification and identity roadmap
 
 - Google login is the currently supported sign-in method. Auth.js provider identities are persisted in the `accounts` table, and automatic email-based account linking remains explicitly disabled.
 - Phase 3A adds account status, normalized verified-contact uniqueness, hashed verification-event storage, server-only linking policy, and truthful account status UI.
-- Verified email delivery and confirmation are planned for Phase 3C.
+- Phase 3C keeps `users.email` as the stable Google/Auth.js identity. A separately verified `contact_email` can be added or changed without altering Google provider linkage.
+- Authenticated email verification uses a six-digit, 10-minute, single-use code delivered through the server-only email-provider adapter. Only a context-bound HMAC is stored in `verification_events`; resends cancel older pending contact-email challenges and five incorrect attempts fail an event.
+- Contact-email conflict responses are intentionally generic. Server Actions derive the user from Auth.js, re-check ACTIVE status in PostgreSQL, and rate-limit requests, destinations, IPs, and verification attempts.
 - Phone OTP delivery and verification are planned for Phase 3D.
-- Verification events store keyed destination hashes and may later store challenge hashes; raw OTPs and raw custom verification tokens must never be persisted.
+- Verification events store keyed destination and challenge hashes; raw OTPs and raw custom verification tokens must never be persisted or logged.
 - `IDENTITY_HASH_PEPPER` is server-only. Use a unique value of at least 32 characters in each environment and never commit it.
+
+### Resend setup
+
+1. Create a Resend account and verify a sending domain you control.
+2. Add the DNS records shown by Resend and wait until the domain is verified.
+3. Create a restricted sending API key. Do not place it in a committed file.
+4. Set `EMAIL_PROVIDER=resend`, `EMAIL_FROM` to a sender on the verified domain, and `RESEND_API_KEY` in the matching Vercel Preview or Production environment.
+5. Apply the latest Drizzle migration to a backed-up Preview database, deploy to Preview, and complete the email verification smoke test before applying the migration or promoting the build in Production.
+
+Unit tests mock the delivery provider and never send real email. A successful build does not prove domain verification or inbox delivery; verify those manually in Preview and Production.
 
 ## Database
 
@@ -82,10 +97,10 @@ Payment finalization updates payment, attempt, order, inventory, payouts, cart, 
 ## Security and operational notes
 
 - Production responses include CSP, HSTS, frame protection, MIME sniffing protection, a strict referrer policy, and a restricted permissions policy.
-- Auth POSTs, upload authorization, payment verification, webhooks, and authenticated Server Actions have initial rate limits.
+- Auth POSTs, email verification, upload authorization, payment verification, webhooks, and authenticated Server Actions have initial rate limits.
 - The limiter is per-process and best-effort. Replace it with a shared durable limiter before horizontal scale or adversarial traffic.
 - The web manifest is the PWA foundation. Offline caching, install UX, and a full service-worker strategy are later-phase work.
-- Artwork moderation, email/SMS delivery, receipts/certificates, shipping/refund operations, and payout execution remain later phases.
+- Artwork moderation, SMS delivery, receipts/certificates, shipping/refund operations, and payout execution remain later phases.
 
 ## Deployment checklist
 

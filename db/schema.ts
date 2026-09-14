@@ -41,6 +41,8 @@ export const users = pgTable("users", {
   name: text("name"),
   email: text("email").notNull(),
   emailVerified: timestamp("email_verified", { withTimezone: true }),
+  contactEmail: text("contact_email"),
+  contactEmailVerifiedAt: timestamp("contact_email_verified_at", { withTimezone: true }),
   image: text("image"),
   phoneE164: text("phone_e164"),
   phoneVerifiedAt: timestamp("phone_verified_at", { withTimezone: true }),
@@ -51,6 +53,7 @@ export const users = pgTable("users", {
 }, (table) => [
   uniqueIndex("users_email_unique").on(table.email),
   uniqueIndex("users_verified_email_normalized_unique").on(sql`lower(${table.email})`).where(sql`${table.emailVerified} is not null`),
+  uniqueIndex("users_verified_contact_email_normalized_unique").on(sql`lower(${table.contactEmail})`).where(sql`${table.contactEmailVerifiedAt} is not null`),
   uniqueIndex("users_verified_phone_unique").on(table.phoneE164).where(sql`${table.phoneVerifiedAt} is not null`),
   index("users_account_status_idx").on(table.accountStatus),
 ]);

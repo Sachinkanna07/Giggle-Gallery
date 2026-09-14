@@ -12,6 +12,9 @@ export const requiredProductionEnvKeys = [
   "RAZORPAY_KEY_SECRET",
   "RAZORPAY_WEBHOOK_SECRET",
   "IDENTITY_HASH_PEPPER",
+  "EMAIL_PROVIDER",
+  "EMAIL_FROM",
+  "RESEND_API_KEY",
 ] as const;
 
 const nonEmpty = z.string().trim().min(1);
@@ -28,6 +31,9 @@ export const productionEnvSchema = z.object({
   RAZORPAY_KEY_SECRET: nonEmpty,
   RAZORPAY_WEBHOOK_SECRET: nonEmpty,
   IDENTITY_HASH_PEPPER: nonEmpty.min(32),
+  EMAIL_PROVIDER: z.literal("resend"),
+  EMAIL_FROM: nonEmpty.refine((value) => /(?:^|<)[^<>\s@]+@[^<>\s@]+\.[^<>\s@]+>?$/.test(value), "must contain a valid sender email address"),
+  RESEND_API_KEY: nonEmpty.refine((value) => value.startsWith("re_"), "must be a Resend API key"),
   GST_RATE_BPS: z.coerce.number().int().min(0).max(10_000).default(0),
 }).superRefine((value, context) => {
   const authUrl = new URL(value.AUTH_URL);
