@@ -223,4 +223,28 @@ export async function cancelEmailChallenge(userId: string, eventId: string, now 
   return Boolean(cancelled);
 }
 
+export async function removeContactEmail(userId: string, now = new Date()): Promise<{ status: "REMOVED" | "ACCOUNT_UNAVAILABLE" }> {
+  return getDb().transaction(async (tx) => {
+    // Use the same lock as request/verify so an old challenge cannot restore the address.
+    const [identity] = await tx.select({
+      accountStatus: users.accountStatus,
+      disabled: users.disabled,
+    }).from(users).where(eq(users.id, userId)).limit(1).for("update");
+    if (!activeIdentity(identity)) return { status: "ACCOUNT_UNAVAILABLE" };
+
+    await tx.update(users).set({
+      contactEmail: null,
+      contactEmailVerifiedAt: null,
+      updatedAt: now,
+    }).where(eq(users.id, userId));
+    await tx.update(verificationEvents).set({ status: "CANCELLED", consumedAt: now }).where(and(
+      eq(verificationEvents.userId, userId),
+      eq(verificationEvents.type, "EMAIL"),
+      eq(verificationEvents.purpose, EMAIL_VERIFICATION_PURPOSE),
+      eq(verificationEvents.status, "PENDING"),
+    ));
+    return { status: "REMOVED" };
+  });
+}
+
 export { EMAIL_VERIFICATION_MAX_ATTEMPTS };

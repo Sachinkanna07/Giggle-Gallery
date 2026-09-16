@@ -4,6 +4,7 @@ import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   cancelEmailChallengeAction,
+  removeContactEmailAction,
   requestEmailVerificationAction,
   verifyEmailChallengeAction,
   type EmailVerificationActionState,
@@ -26,7 +27,8 @@ function StatusMessage({
     state.status === "sent" ||
     state.status === "verified" ||
     state.status === "already_verified" ||
-    state.status === "cancelled";
+    state.status === "cancelled" ||
+    state.status === "removed";
 
   return (
     <p
@@ -43,7 +45,17 @@ function StatusMessage({
 }
 
 
-export function EmailSettings({
+export function EmailSettings(props: {
+  primaryEmail: string;
+  primaryEmailVerified: boolean;
+  contactEmail: string | null;
+  contactEmailVerified: boolean;
+}) {
+  // Discard local challenge state when the persisted contact address changes.
+  return <EmailSettingsContent key={props.contactEmail ?? ""} {...props} />;
+}
+
+function EmailSettingsContent({
   primaryEmail,
   primaryEmailVerified,
   contactEmail,
@@ -55,6 +67,10 @@ export function EmailSettings({
   contactEmailVerified: boolean;
 }) {
   const router = useRouter();
+  const [removeState, removeAction, removePending] = useActionState(
+    removeContactEmailAction,
+    initialState,
+  );
 
   const [requestState, requestAction, requestPending] = useActionState(
     requestEmailVerificationAction,
@@ -149,10 +165,7 @@ export function EmailSettings({
           </p>
 
           <p className="mt-2 break-all text-sm text-white/80">
-            {contactEmail ??
-              (primaryEmailVerified
-                ? primaryEmail
-                : "No verified contact email")}
+            {contactEmail ?? "No verified contact email"}
           </p>
 
           <p className="mt-2 text-xs text-white/45">
@@ -160,10 +173,23 @@ export function EmailSettings({
               ? contactEmailVerified
                 ? "Verified"
                 : "Not verified"
-              : primaryEmailVerified
-                ? "Verified"
-                : "Not verified"}
+              : "Add a contact email below if you want one."}
           </p>
+          {contactEmail ? (
+            <form action={removeAction} className="mt-3">
+              <p className="mb-2 text-xs text-white/45">
+                Removing this address also cancels pending email verification. Your sign-in email stays unchanged.
+              </p>
+              <button
+                type="submit"
+                disabled={removePending || requestPending || verifyPending || cancelPending}
+                className="text-xs text-white/65 underline underline-offset-4 hover:text-white disabled:opacity-40"
+              >
+                {removePending ? "Removing..." : "Remove contact email"}
+              </button>
+            </form>
+          ) : null}
+          <StatusMessage state={removeState} />
         </div>
       </div>
 

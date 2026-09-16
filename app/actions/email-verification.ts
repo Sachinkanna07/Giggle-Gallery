@@ -9,6 +9,7 @@ import {
 } from "@/lib/email-verification/core";
 import {
   cancelEmailChallenge,
+  removeContactEmail,
   requestEmailVerification,
   verifyEmailChallenge,
 } from "@/lib/email-verification/service";
@@ -19,7 +20,7 @@ import { hashDestination } from "@/lib/identity/rules";
 import { enforceServerActionRateLimitDimensions } from "@/lib/security/server-actions";
 
 export type EmailVerificationActionState = {
-  status: "idle" | "sent" | "verified" | "already_verified" | "cancelled" | "error";
+  status: "idle" | "sent" | "verified" | "already_verified" | "cancelled" | "removed" | "error";
   message: string;
   eventId?: string;
   email?: string;
@@ -28,6 +29,22 @@ export type EmailVerificationActionState = {
 
 function formEntries(formData: FormData): Record<string, FormDataEntryValue> {
   return Object.fromEntries(formData.entries());
+}
+
+export async function removeContactEmailAction(): Promise<EmailVerificationActionState> {
+  try {
+    const user = await requireUser();
+    await enforceServerActionRateLimitDimensions("contact-email-remove", [
+      { name: "user", key: user.id, limit: 10, windowMs: 10 * 60_000 },
+      { name: "ip", key: "remove", limit: 20, windowMs: 10 * 60_000 },
+    ]);
+    const result = await removeContactEmail(user.id);
+    if (result.status === "ACCOUNT_UNAVAILABLE") return errorState("This account cannot remove a contact email.");
+    revalidatePath("/account");
+    return { status: "removed", message: "Contact email removed. Your sign-in email is unchanged." };
+  } catch (error) {
+    return safeActionError(error, "The contact email could not be removed. Please try again.");
+  }
 }
 
 function errorState(message: string, context?: { eventId?: string; email?: string }): EmailVerificationActionState {

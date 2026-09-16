@@ -242,7 +242,7 @@ describe("delivery and abuse boundaries", () => {
 
   it("keeps user identity server-controlled in every email action", async () => {
     const source = await readFile(new URL("../../app/actions/email-verification.ts", import.meta.url), "utf8");
-    expect(source.match(/await requireUser\(\)/g)).toHaveLength(3);
+    expect(source.match(/await requireUser\(\)/g)).toHaveLength(4);
     expect(source).not.toMatch(/formData\.get\(["']userId["']\)/);
   });
 });
