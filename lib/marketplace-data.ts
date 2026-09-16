@@ -110,7 +110,7 @@ export async function getMarketplaceCatalog(): Promise<MarketplaceCatalog> {
       .where(eq(artworkTable.status, "PUBLISHED"))
       .orderBy(desc(artworkTable.featured), desc(artworkTable.publishedAt));
 
-    if (!rows.length) return fallbackCatalog();
+    if (!rows.length) return { artworks: [], artists: [], databaseReady: true };
     const ids = rows.map((row) => row.id);
     const artistIds = [...new Set(rows.map((row) => row.artistId))];
     const [images, tagRows, likeRows, followerRows] = await Promise.all([
