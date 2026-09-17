@@ -309,7 +309,11 @@ export async function reviewSellerApplication(applicationId: string, decision: "
       if (validatedDecision === "APPROVED") {
         const slug = `${application.displayName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}-${application.id.slice(0, 6)}`;
         await tx.insert(artistProfiles).values({ userId: application.userId, slug, displayName: application.displayName, biography: application.biography, artistStatement: application.artistStatement, location: [application.city, application.state, application.country].filter(Boolean).join(", "), styles: [application.artStyle], specialization: application.specialization, experienceYears: application.experienceYears, portfolioUrl: application.portfolioUrl, socialUrl: application.socialUrl, preferredCurrency: application.preferredCurrency, sellerType: application.sellerType, verified: true }).onConflictDoUpdate({ target: artistProfiles.userId, set: { displayName: application.displayName, biography: application.biography, artistStatement: application.artistStatement, styles: [application.artStyle], verified: true, updatedAt: new Date() } });
-        await tx.update(users).set({ role: "SELLER", updatedAt: new Date() }).where(eq(users.id, application.userId));
+        // Only promote BUYER -> SELLER. SELLER and ADMIN roles are preserved;
+        // ADMIN already satisfies requireSeller() so no demotion is needed.
+        await tx.update(users).set({ role: "SELLER", updatedAt: new Date() }).where(
+          and(eq(users.id, application.userId), eq(users.role, "BUYER")),
+        );
       }
       return true;
     });
