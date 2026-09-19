@@ -7,7 +7,7 @@ const contentSecurityPolicy = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https://*.public.blob.vercel-storage.com https://lh3.googleusercontent.com",
   "font-src 'self' data:",
-  "connect-src 'self' https://*.public.blob.vercel-storage.com https://*.razorpay.com https://api.razorpay.com",
+  "connect-src 'self' https://vercel.com https://*.public.blob.vercel-storage.com https://*.razorpay.com https://api.razorpay.com",
   "frame-src 'self' https://*.razorpay.com https://api.razorpay.com",
   "object-src 'none'",
   "base-uri 'self'",
