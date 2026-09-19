@@ -1,6 +1,6 @@
 import "server-only";
 
-import { count, desc, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray } from "drizzle-orm";
 import { getDb, hasDatabase } from "@/db";
 import { isProductionRuntime } from "@/lib/env-schema";
 import {
@@ -236,7 +236,7 @@ export async function getSellerSnapshot(userId: string) {
   if (!artist) return { artist: null, application: application ?? null, artworks: [], sales: [], payouts: [] };
   const [sellerArtworks, sales, sellerPayouts] = await Promise.all([
     db.select().from(artworkTable).where(eq(artworkTable.artistId, artist.id)).orderBy(desc(artworkTable.createdAt)),
-    db.select({ id: orderItems.id, orderNumber: orders.orderNumber, buyerReference: orders.buyerId, title: orderItems.titleSnapshot, quantity: orderItems.quantity, amount: orderItems.lineTotal, sellerEarnings: orderItems.sellerEarnings, status: orders.status, paymentStatus: orders.paymentStatus, createdAt: orderItems.createdAt }).from(orderItems).innerJoin(orders, eq(orderItems.orderId, orders.id)).where(eq(orderItems.artistId, artist.id)).orderBy(desc(orderItems.createdAt)),
+    db.select({ id: orderItems.id, orderNumber: orders.orderNumber, buyerReference: orders.buyerId, title: orderItems.titleSnapshot, quantity: orderItems.quantity, amount: orderItems.lineTotal, sellerEarnings: orderItems.sellerEarnings, status: orders.status, paymentStatus: orders.paymentStatus, createdAt: orderItems.createdAt }).from(orderItems).innerJoin(orders, eq(orderItems.orderId, orders.id)).where(and(eq(orderItems.artistId, artist.id), eq(orders.paymentStatus, "PAID"), inArray(orders.status, ["CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED"]))).orderBy(desc(orderItems.createdAt)),
     db.select().from(payouts).where(eq(payouts.artistId, artist.id)).orderBy(desc(payouts.createdAt)),
   ]);
   return { artist, application: application ?? null, artworks: sellerArtworks, sales, payouts: sellerPayouts };
