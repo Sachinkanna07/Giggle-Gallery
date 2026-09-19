@@ -1,136 +1,227 @@
-# Next Work Prompts
+# Giggle Gallery Next Work Prompts
 
-Replace bracketed placeholders before use. Every prompt assumes an audit-first workflow and truthful reporting.
+Replace bracketed placeholders before use. Each prompt is deliberately narrow: inspect first, preserve server-owned security boundaries, validate locally, and distinguish local proof from production proof.
 
-## A. Giggle Gallery final paid-flow test with ₹1 artwork
+## 1. ₹1 paid-flow test
 
 ```text
-Objective: Verify one complete Giggle Gallery Razorpay test-mode payment using a dedicated ₹1 artwork.
-
-Repository: [GIGGLE_GALLERY_REPO]
-Production or preview URL: [URL]
-
-Inspect first: current HEAD/status, payment creation, browser verification, webhook, finalization transaction, order page, seller dashboard, and provider mode. Read docs/GIGGLE_GALLERY_MVP_STATUS.md.
-
-Do: create and publish only a clearly named ₹1 test artwork through the normal seller/admin UI; use Razorpay test mode; capture non-secret evidence for the provider order, payment, webhook, order status, stock, seller revenue, and payout.
-
-Do not: pay for qwsedregthywrteyrut; use live-mode money; expose credentials; edit production rows directly; bypass signatures; weaken auth, stock, or upload checks; claim success without browser, provider, and database evidence.
-
-Validation commands: npm run lint; npm run typecheck; npm test; npm run build; git diff --check; npm audit. Also verify duplicate webhook handling and buyer ownership.
-
-Final report: HEAD; environment/provider mode; test artwork; browser result; signature result; webhook result; order/payment/stock/payout result; seller revenue result; files changed; validation; production data modified; cleanup needed; remaining risks.
+Objective: Verify one complete Razorpay test-mode payment using a dedicated ₹1 artwork.
+Repo/context: [REPO], [PRODUCTION_OR_PREVIEW_URL], [VERCEL_PROJECT].
+Inspect first: status/log, MVP status doc, checkout creation, verification, webhook, finalization transaction, buyer orders, seller reporting, and provider mode.
+Do: create/review/publish the test artwork through normal UI; record non-secret evidence for order, payment, webhook, stock, seller revenue, and payout; test one duplicate webhook.
+Don't: use live money, pay for qwsedregthywrteyrut, edit DB rows, expose provider IDs/secrets in git, or claim success from checkout opening alone.
+Security: keep server pricing, signatures, buyer ownership, idempotency, and conditional stock decrement unchanged.
+Tests: add/update only if a reproducible code defect is found; cover its negative boundary.
+Validation: npm run lint; npm run typecheck; npm test; npm run build; git diff --check; npm audit.
+Final report: HEAD; provider mode; browser/signature/webhook results; order/payment/stock/payout/seller results; files; validation; production data changed; cleanup; risks.
 ```
 
-## B. Giggle Gallery cleanup of public test face artwork
+## 2. Clean up the public face artwork
 
 ```text
-Objective: Safely remove or archive the public test artwork qwsedregthywrteyrut after paid-flow evidence is complete.
-
-Repository/context: [GIGGLE_GALLERY_REPO], [DEPLOYMENT_URL], [ADMIN_ACCOUNT]
-
-Inspect first: artwork status, stock, linked order items, payments, payouts, Blob image references, and available admin/product workflows.
-
-Do: prefer a recoverable application/admin workflow; preserve order history and audit references; confirm the exact artwork before acting; document whether the Blob remains retained.
-
-Do not: run direct destructive SQL, delete orders/payments, remove unrelated Blob objects, expose user data, or act before the owner confirms paid-flow evidence is complete.
-
-Validate: artwork no longer appears publicly, historical orders still render safely, seller/admin records remain coherent, and local checks pass for any code change.
-
-Validation commands: npm run typecheck; npm test; npm run build; git diff --check; npm audit. Also verify the public gallery and historical orders in the browser.
-
-Final report: HEAD before/after; exact target; action taken; recoverability; public result; preserved records; files changed; validation; commit; push; production data modified; follow-up.
+Objective: Safely unpublish/archive qwsedregthywrteyrut after test evidence is preserved.
+Repo/context: [REPO], [URL], [ADMIN_ACCOUNT].
+Inspect first: exact artwork, current status, linked order items/payments/payouts, Blob references, and supported admin workflow.
+Do: prefer a recoverable product/admin action; preserve financial history and audit references; verify the exact target twice.
+Don't: delete directly with SQL, remove unrelated Blobs, delete orders/payments, or act before paid-flow evidence is complete.
+Security: require admin authorization and avoid exposing buyer/seller/provider data.
+Tests: cover archive/unpublish authorization and historical-order rendering if code changes.
+Validation: npm run lint; npm run typecheck; npm test; npm run build; git diff --check; npm audit; browser-check public absence and historical records.
+Final report: target; action; recoverability; Blob disposition; records preserved; files; validation; commit/push; production data changed; follow-up.
 ```
 
-## C. Giggle Gallery final launch checklist
+## 3. Final launch checklist
 
 ```text
-Objective: Decide whether Giggle Gallery is ready for MVP launch using evidence from code, deployment, providers, and manual production flows.
-
-Repository/context: [GIGGLE_GALLERY_REPO], [PRODUCTION_URL], [VERCEL_PROJECT], [PROVIDER_MODE]
-
-Inspect first: git status/log, docs/GIGGLE_GALLERY_MVP_STATUS.md, deployment status, production environment-variable names without values, Google callback configuration, Blob access, Razorpay webhook configuration, Resend status, monitoring, rollback readiness, and the latest paid-flow evidence.
-
-Do: verify public/authenticated routes, security headers, production database connectivity, published-only catalog behavior, seller/admin access, upload callbacks, one completed test-mode payment, webhook replay safety, buyer ownership, stock, seller revenue, and rollback instructions.
-
-Do not: expose secrets, make a live payment, edit production rows directly, weaken CSP/auth/payment/upload rules, treat build success as production proof, delete test data before evidence is recorded, or claim launch readiness with missing provider checks.
-
-Validation commands: npm run lint; npm run typecheck; npm test; npm run build; git diff --check; npm audit. Run scoped checks if `.kilo/worktrees` alone breaks repository-wide discovery, and report that separately.
-
-Final report: HEAD; deployment; public HTTP status; auth; database; upload; payment; webhook; email; monitoring; rollback; validation; launch blockers; launch decision GO/NO-GO; production data modified.
+Objective: Issue an evidence-based GO/NO-GO decision for the Giggle Gallery MVP.
+Repo/context: [REPO], [PRODUCTION_URL], [VERCEL_PROJECT], [PROVIDER_MODES].
+Inspect first: git/deployment, environment variable names only, OAuth callback, DB, Blob, Razorpay webhook, Resend, CSP, monitoring, backup and rollback, plus paid-flow evidence.
+Do: verify public/authenticated routes, roles, catalog visibility, seller/admin flows, upload, paid flow, webhook replay, ownership, stock, email, alerts, and rollback readiness.
+Don't: print secrets, make live payments, mutate DB directly, weaken controls, or treat build/Ready status as end-to-end proof.
+Security: review auth, account status, upload intent, published-only catalog, server pricing, payment verification, order ownership, stock idempotency, and secret handling.
+Tests: run existing suites; add only for a reproduced defect.
+Validation: npm run lint; npm run typecheck; npm test; npm run build; git diff --check; npm audit.
+Final report: HEAD/deployment; each subsystem PASS/FAIL/UNVERIFIED; validation; blockers; rollback; GO/NO-GO; production data changed.
 ```
 
-## D. KISH / Smart Mandi start
+## 4. Public artist profile
 
 ```text
-Objective: Audit and continue the KISH / Smart Mandi product from its current state, replacing demo-only flows incrementally with secure persisted workflows.
-
-Repository: [KISH_REPO]
-Stack/deployment: [STACK_AND_URL]
-
-Inspect first: git status/log, README, frontend entry points, backend routes/models, auth/session/RBAC, database migrations, tests, and current deployment configuration. Produce a feature/data-flow map before editing.
-
-Do: preserve the existing product identity; prioritize server authorization, real persistence, transactional business rules, and a small vertical slice.
-
-Do not: trust client role switching or localStorage as business state; introduce fake AI or simulated success; rewrite everything; expose secrets; start adjacent features without approval.
-
-Validation commands: `.\.venv\Scripts\python.exe -m pytest backend/tests -q`; `npm run build`; plus `[FRONTEND_LINT_OR_TYPECHECK_COMMAND]` if configured. Then verify the selected flow from browser to API to database and back.
-
-Final report: baseline; audited risks; implemented slice; files changed; tests/build; deployment status; manual action; next recommended slice.
+Objective: Complete a credible public artist profile and safe seller-edit workflow without redesigning the site.
+Repo/context: [REPO], current /artist/[slug], artist schema/actions, [DEPLOYMENT_URL].
+Inspect first: profile schema, getArtistBySlug, seller ownership, image storage, follows/ratings, routes, tests, and existing visual system.
+Do: define verified fields, seller edit action, validation, published-artwork filtering, useful empty states, responsive/accessibility polish, and cache/revalidation behavior.
+Don't: let sellers edit roles/approval/rating counts; expose private contacts; show unpublished work; add fake credentials or metrics.
+Security: server-resolve seller profile from session; validate URLs/images; authorize every mutation.
+Tests: owner/non-owner/admin boundaries, invalid input, published-only works, slug collision, empty profile.
+Validation: npm run lint; npm run typecheck; npm test; npm run build; git diff --check; npm audit.
+Final report: baseline; fields/workflow; security; migrations; files; tests; validation; manual production checks; commit/push; risks.
 ```
 
-## E. Portfolio/profile cleanup
+## 5. Search and filters
 
 ```text
-Objective: Clean and strengthen [PORTFOLIO_OR_PROFILE] for professional presentation while preserving the owner's voice.
-
-Source/location: [REPO_OR_DOCUMENT]
-Target audience/role: [AUDIENCE]
-
-Inspect first: current content, links, project claims, dates, contact details, formatting, accessibility, mobile behavior, and any private information.
-
-Do: remove repetition, clarify outcomes and ownership, verify links and claims, improve hierarchy, and keep wording concise and authentic.
-
-Do not: invent metrics, employers, credentials, testimonials, or project status; expose private contact data; replace the visual identity without approval.
-
-Validation commands: `[SPELLCHECK_COMMAND]`; `[LINK_CHECK_COMMAND]`; and, for code changes, `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` when those scripts exist. Also inspect responsive rendering and accessibility basics.
-
-Final report: key improvements; claims verified; files changed; validation; unresolved placeholders; recommended next action.
+Objective: Turn existing search/filter logic into a stable, URL-shareable discovery experience.
+Repo/context: [REPO], lib/search.ts, gallery components, marketplace query path.
+Inspect first: current controls, natural-query parser, catalog size/query source, URL state, mobile UX, accessibility, and search tests.
+Do: preserve useful filters/sorts, encode state in URL, add clear/reset and honest zero-results recovery, and keep results published-only.
+Don't: introduce fake AI, trust client catalog data, query unpublished records, or add a search service before scale justifies it.
+Security: whitelist sort/filter values and keep public visibility enforced at the data boundary.
+Tests: parser, combined filters, malformed URL values, price boundaries, sorting, no results, unpublished exclusion.
+Validation: npm run lint; npm run typecheck; npm test; npm run build; git diff --check; npm audit.
+Final report: query contract; UX changes; security; files; tests; performance notes; validation; manual checks; commit/push.
 ```
 
-## F. AI SOC project start
+## 6. Wishlist and collections
 
 ```text
-Objective: Define and implement the first safe vertical slice of an AI-assisted security operations center project.
-
-Repository/context: [REPO_OR_EMPTY_WORKSPACE]
-Users/data sources/deployment: [PLACEHOLDERS]
-
-Inspect first: existing code/docs, threat model, data sensitivity, event sources, tenancy, auth/RBAC, retention, model/provider boundaries, and evaluation needs.
-
-Do: choose one narrow workflow such as ingest -> normalize -> triage suggestion -> analyst approval -> audit log; keep the analyst in control; use synthetic fixtures until real-data handling is approved.
-
-Do not: claim autonomous incident response, execute remediation without explicit approval, ingest secrets/PII casually, hide model uncertainty, or build a broad dashboard before the data contract works.
-
-Validation commands: `[UNIT_TEST_COMMAND]`; `[SECURITY_TEST_COMMAND]`; `[LINT_COMMAND]`; `[TYPECHECK_COMMAND]`; `[BUILD_COMMAND]`. Also run one end-to-end synthetic incident and retain non-sensitive audit-log evidence.
-
-Final report: architecture boundary; threat model; implemented slice; evaluation results; security limitations; files changed; validation; next decision needed.
+Objective: Polish saves and private collections into a complete, dependable workflow.
+Repo/context: [REPO], collections/saves actions, /collections, artwork cards.
+Inspect first: schema, session/ownership checks, optimistic UI, errors, duplicate rules, empty states, and existing tests.
+Do: make save/unsave and create/rename/delete/add/remove coherent; preserve state across refresh; add accessible feedback and mobile polish.
+Don't: expose private collections, accept another user's IDs, delete artwork, or create public sharing without separate approval.
+Security: derive user from session and scope every collection mutation by owner in the database.
+Tests: unauthenticated/non-owner, duplicate save, rename validation, delete semantics, stale UI, missing artwork.
+Validation: npm run lint; npm run typecheck; npm test; npm run build; git diff --check; npm audit.
+Final report: flows; privacy/ownership; files; tests; validation; manual checks; commit/push; deferred sharing work.
 ```
 
-## G. TerraFarm project start
+## 7. Seller order management
 
 ```text
-Objective: Audit TerraFarm and deliver its first production-oriented, data-backed workflow.
+Objective: Let sellers manage only their paid order items through a controlled fulfillment lifecycle.
+Repo/context: [REPO], seller dashboard, orders/orderItems/payments/payouts schema.
+Inspect first: getSellerSnapshot, paid-only filtering, order states, buyer privacy, shipping gaps, actions, and tests.
+Do: define allowed transitions, seller-scoped order view, dispatch/tracking fields if approved, timestamps, audit evidence, and buyer notification events.
+Don't: expose full payment credentials, let sellers mark unpaid orders paid, alter totals, view other sellers' items, or skip transition checks.
+Security: authorize by session seller and item ownership; use conditional updates; redact buyer data to fulfillment minimum.
+Tests: unpaid exclusion, cross-seller denial, invalid transitions, replay, mixed-seller order, notification dedupe.
+Validation: npm run lint; npm run typecheck; npm test; npm run build; git diff --check; npm audit.
+Final report: state machine; privacy; migration; files; tests; validation; production checklist; commit/push; risks.
+```
 
-Repository/context: [TERRAFARM_REPO]
-Users, region, data sources, and deployment: [PLACEHOLDERS]
+## 8. Admin order management
 
-Inspect first: existing product, target farm workflow, user roles, field/crop models, weather or sensor dependencies, offline needs, data ownership, tests, and deployment setup.
+```text
+Objective: Add read-first admin oversight for orders, payments, failures, and fulfillment without creating unsafe refund controls.
+Repo/context: [REPO], /admin, order/payment/webhook schema and actions.
+Inspect first: admin guard, statuses, provider references, PII, pagination/filter needs, reconciliation gaps, and audit logging.
+Do: build server-filtered/paginated oversight, detail view, failure flags, and safe links to existing records; add explicit audit events for any approved mutation.
+Don't: expose secrets/signatures, allow arbitrary status edits, implement refunds, or weaken buyer/seller ownership routes.
+Security: ADMIN server check on every read/action; redact sensitive data; validate filters; default to read-only.
+Tests: non-admin denial, filters/pagination, redaction, malformed IDs, mixed seller orders, read-only guarantees.
+Validation: npm run lint; npm run typecheck; npm test; npm run build; git diff --check; npm audit.
+Final report: capabilities; redaction/auth; files; tests; validation; manual checks; commit/push; deferred operations.
+```
 
-Do: preserve useful existing design; select one high-value vertical slice; make recommendations explainable; record source and timestamp for external agricultural data.
+## 9. Offers
 
-Do not: invent agronomic certainty, present generic AI output as expert advice, expose farmer data, add unapproved providers, or rebuild the whole product.
+```text
+Objective: Design and implement expiring buyer offers with seller accept/counter/decline and a secure accepted-price checkout.
+Repo/context: [REPO], artwork/checkout/order/payment boundaries, [PRODUCT_POLICY].
+Inspect first: fixed-price flow, availability, money types, notifications, concurrency, seller ownership, and marketplace offer policies.
+Do: agree state machine/expiry/competing-offer rules first; use exact money; authorize actors; preserve append-only history; create checkout server-side from an accepted active offer.
+Don't: reserve stock merely for an offer unless policy says so; charge before acceptance; trust client prices; let acceptance bypass stock/payment checks.
+Security: idempotency, conditional acceptance, buyer/seller isolation, rate limits, audit events, and accepted-price integrity.
+Tests: actor denial, low/high amounts, expiry races, simultaneous acceptance, withdrawal, stale stock, duplicate actions, checkout amount.
+Validation: npm run lint; npm run typecheck; npm test; npm run build; git diff --check; npm audit.
+Final report: policy/state machine; migration; security/races; files; tests; validation; manual test; commit/push; remaining risks.
+```
 
-Validation commands: `[DOMAIN_TEST_COMMAND]`; `[AUTHORIZATION_TEST_COMMAND]`; `[LINT_COMMAND]`; `[TYPECHECK_COMMAND]`; `[BUILD_COMMAND]`. Also verify failure/offline states and one end-to-end workflow using non-sensitive data.
+## 10. Auction schema planning
 
-Final report: audited baseline; chosen slice; data provenance; safety limitations; files changed; validation; deployment status; next human decision.
+```text
+Objective: Produce an implementation-ready auction schema and state-machine plan only.
+Repo/context: [REPO], docs/AUCTION_SYSTEM_DESIGN.md, current artwork/order/payment schema.
+Inspect first: all existing constraints, money/date conventions, migrations, payment idempotency, stock, jobs, notifications, and legal/product unknowns.
+Do: refine entities, indexes, constraints, state transitions, actor permissions, concurrency strategy, migration/rollback, and test matrix; flag unresolved policy decisions.
+Don't: add tables, routes, UI, jobs, or payment changes; do not assume live bidding, KYC, reserve, default, refund, or anti-sniping policy.
+Security: threat-model self-bidding, races, replay, privacy, cancellation, payment default, and admin abuse.
+Tests: specify concurrency and property/invariant tests even though no runtime code is added.
+Validation: npm run typecheck; git diff --check; npm audit; validate schema examples against current types.
+Final report: decisions; open policy questions; proposed migration; invariants; threats; test plan; docs changed; validation; implementation gate.
+```
+
+## 11. Auction bidding phase 1
+
+```text
+Objective: Implement feature-flagged, test-only timed bidding after auction schema/policy approval.
+Repo/context: [REPO], approved auction design/migration, [FLAG_PROVIDER].
+Inspect first: approved decisions, schema state, session/account checks, DB transaction support, clocks, rate limits, and observability.
+Do: implement staff-only read UI and atomic placeBid with append-only bids, server time/amount, version or row locking, idempotency, masked bidder display, and kill switch.
+Don't: implement payment/finalization, public rollout, proxy/live bidding, auto-extension, or permit seller self-bids.
+Security: active-account checks, ownership denial, durable rate limit, CSRF/origin defense, log redaction, conditional transaction.
+Tests: simultaneous/stale/equal bids, end-time race, retry idempotency, self-bid, inactive user, minimum increment, flag off.
+Validation: npm run lint; npm run typecheck; npm test; npm run build; git diff --check; npm audit; run a two-client concurrency test.
+Final report: flag/scope; transaction invariant; migration; files; tests; validation; manual evidence; commit/push; rollout blocked on.
+```
+
+## 12. Auction finalization and payment
+
+```text
+Objective: Add idempotent auction close, winner order, and test-mode payment only after phase-1 concurrency evidence.
+Repo/context: [REPO], approved policy, auction phase 1, Razorpay test mode, scheduler choice.
+Inspect first: finalization design, payment boundary, stock, order ownership, webhook replay, scheduler auth/retries, default policy, reconciliation.
+Do: finalize deterministically under transaction, create one winner obligation/order, derive exact amount server-side, enforce deadline, reuse verified payment finalization, add reconciliation and kill switch.
+Don't: use live money, silently promote bidders, auto-refund, duplicate fixed-price logic, or mark paid from browser claims.
+Security: independently authenticate jobs; idempotency constraints; winner-only checkout/order; one stock decrement; immutable bid winner evidence.
+Tests: duplicate/missed finalizer, reserve, ties, late bid, duplicate callbacks/webhooks, failed/late payment, ownership, stock/payout once.
+Validation: npm run lint; npm run typecheck; npm test; npm run build; git diff --check; npm audit; controlled end-to-end test-mode auction.
+Final report: policy; scheduler; payment evidence; security/invariants; files; tests; validation; rollback; commit/push; production rollout status.
+```
+
+## 13. Notifications
+
+```text
+Objective: Deliver a reliable in-app notification inbox and selected transactional emails.
+Repo/context: [REPO], notifications schema, Resend integration, event-producing workflows.
+Inspect first: existing writes, email verification, provider config, deep-link targets, privacy, retries, and current UI.
+Do: define event catalog and dedupe keys; add owner-scoped paginated inbox/read state; send email asynchronously or after committed state; add preferences where required.
+Don't: let notifications drive business state, send secrets/PII, duplicate on webhook replay, or claim email works without inbox evidence.
+Security: owner-scoped reads/mutations, safe deep links, HTML escaping, rate limits, provider error redaction.
+Tests: ownership, unread transitions, event dedupe, replay, malformed links, provider failure, preference behavior.
+Validation: npm run lint; npm run typecheck; npm test; npm run build; git diff --check; npm audit.
+Final report: event matrix; channels; privacy; files; tests; validation; real-delivery evidence/unverified; commit/push; risks.
+```
+
+## 14. Reviews
+
+```text
+Objective: Complete verified-purchase reviews with truthful aggregation and moderation.
+Repo/context: [REPO], reviews schema/action, delivered order items, artist/artwork pages.
+Inspect first: current eligibility, unique constraints, delivery state, rating aggregation, edit/delete policy, abuse controls.
+Do: enforce buyer ownership and delivered paid item; one review per item; validate content/rating; calculate aggregates from approved records; add report/moderation path.
+Don't: allow sellers to review themselves, trust client eligibility, invent ratings, expose reviewer private data, or hard-delete audit evidence casually.
+Security: server eligibility query, conditional unique insert, moderation authorization, output escaping, abuse rate limit.
+Tests: unpaid/undelivered/non-owner denial, duplicate review, boundaries, moderation, aggregate updates, deleted artwork/order history.
+Validation: npm run lint; npm run typecheck; npm test; npm run build; git diff --check; npm audit.
+Final report: eligibility/policy; moderation; migration; files; tests; validation; manual checks; commit/push; risks.
+```
+
+## 15. Shipping
+
+```text
+Objective: Add a minimal auditable dispatch, tracking, and delivery workflow for paid physical artwork.
+Repo/context: [REPO], order/orderItem addresses/statuses, seller/admin views, [CARRIER_SCOPE].
+Inspect first: address data, privacy, order state machine, seller access, notifications, returns policy, tax/shipping calculation.
+Do: agree transitions; store carrier/tracking safely; seller dispatch only owned paid items; buyer view; admin oversight; timestamps/audit events; delivery confirmation policy.
+Don't: expose addresses beyond fulfillment need, mark unpaid as shipped, accept arbitrary status jumps, integrate a carrier before approval, or imply insurance/returns guarantees.
+Security: least-privilege address display, conditional transitions, validated tracking URLs, audit log, redacted logs.
+Tests: cross-seller/buyer denial, unpaid order, invalid transitions/tracking, replay, mixed seller order, notification dedupe.
+Validation: npm run lint; npm run typecheck; npm test; npm run build; git diff --check; npm audit.
+Final report: lifecycle/privacy; migration; files; tests; validation; manual shipment simulation; commit/push; policy gaps.
+```
+
+## 16. Portfolio case study
+
+```text
+Objective: Turn Giggle Gallery into a concise, truthful portfolio case study based only on verified work.
+Repo/context: [REPO], README, MVP status, roadmap, screenshots/evidence at [LOCATION].
+Inspect first: current README/docs, git history, deployed flows, validation evidence, known unverified production items, private data and broken links.
+Do: explain problem, product identity, architecture, security decisions, major workflows, tests, deployment, tradeoffs, and next work; use sanitized visuals and precise ownership language.
+Don't: invent users/revenue/performance, claim real paid flow before verified, publish provider IDs/emails/secrets, or include the real-face test image without consent.
+Security: sanitize screenshots/logs and keep all .env/provider/customer data out of git.
+Tests: link/spell check; verify every claim against code/docs/evidence; test README rendering.
+Validation: npm run typecheck; git diff --check; npm audit; run project checks if code changes unexpectedly.
+Final report: narrative changes; verified claims; caveats; files; validation; links/assets; commit/push; next presentation action.
 ```
