@@ -396,3 +396,33 @@ export async function reviewArtworkForm(formData: FormData): Promise<void> {
   const decision = z.enum(["PUBLISHED", "REJECTED"]).parse(String(formData.get("decision") ?? ""));
   await reviewArtwork(artworkId, decision);
 }
+
+export async function unpublishArtwork(artworkId: string): Promise<{ ok: boolean; message: string }> {
+  try {
+    await requireAdmin();
+    const id = idSchema.parse(artworkId);
+    const db = getDb();
+    const outcome = await db.transaction(async (tx) => {
+      const [found] = await tx.select({ id: artworks.id, slug: artworks.slug, status: artworks.status }).from(artworks).where(eq(artworks.id, id)).limit(1).for("update");
+      if (!found) return { status: "NOT_FOUND" as const };
+      if (found.status !== "PUBLISHED") return { status: "NOT_PUBLISHED" as const };
+      await tx.update(artworks).set({ status: "REJECTED", publishedAt: null, updatedAt: new Date() }).where(eq(artworks.id, id));
+      return { status: "UPDATED" as const, slug: found.slug };
+    });
+    if (outcome.status === "NOT_FOUND") return { ok: false, message: "Artwork not found." };
+    if (outcome.status === "NOT_PUBLISHED") return { ok: false, message: "Only published artworks can be unpublished." };
+    revalidatePath("/admin");
+    revalidatePath("/seller");
+    revalidatePath("/");
+    revalidatePath(`/artwork/${outcome.slug}`);
+    return { ok: true, message: "Artwork unpublished." };
+  } catch (error) {
+    if (error instanceof Error && error.message === "ADMIN_REQUIRED") return { ok: false, message: "Admin access required." };
+    if (error instanceof Error && error.message === "RATE_LIMITED") return { ok: false, message: "Too many requests. Please wait a moment." };
+    return { ok: false, message: "We could not save that change. Please try again." };
+  }
+}
+
+export async function unpublishArtworkForm(formData: FormData): Promise<void> {
+  await unpublishArtwork(String(formData.get("artworkId") ?? ""));
+}

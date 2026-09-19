@@ -21,7 +21,7 @@ vi.mock("@/lib/blob-validation", () => ({
   isApprovedArtworkBlobUrl: (url: string, pathname: string) => url.includes(pathname),
 }));
 
-import { createArtwork, reviewArtwork, reviewSellerApplication, submitSellerApplication } from "../../app/actions/marketplace";
+import { createArtwork, reviewArtwork, reviewSellerApplication, submitSellerApplication, unpublishArtwork } from "../../app/actions/marketplace";
 
 const activeUser = { id: "user-123", role: "USER" };
 const activeSeller = { id: "seller-456", role: "SELLER" };
@@ -359,7 +359,7 @@ describe("Artwork Upload", () => {
 const ARTWORK_UUID = "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e";
 
 function artworkReviewDatabase(artworkRow: Record<string, unknown> | null) {
-  const selectRow = vi.fn().mockResolvedValue(artworkRow ? [artworkRow] : []);
+  const selectRow = vi.fn().mockResolvedValue(artworkRow ? [{ slug: "test-artwork", ...artworkRow }] : []);
   const whereSet = vi.fn().mockResolvedValue(undefined);
   const tx = {
     select: vi.fn().mockReturnValue({
@@ -427,5 +427,33 @@ describe("Admin Artwork Review", () => {
     // @ts-expect-error intentionally passing invalid decision
     const result = await reviewArtwork(ARTWORK_UUID, "DRAFT");
     expect(result.ok).toBe(false);
+  });
+
+  it("blocks non-admins from unpublishing artworks", async () => {
+    mocks.requireAdmin.mockRejectedValue(new Error("ADMIN_REQUIRED"));
+    const result = await unpublishArtwork(ARTWORK_UUID);
+    expect(result).toEqual({ ok: false, message: "Admin access required." });
+  });
+
+  it("admin can unpublish a published artwork without deleting it", async () => {
+    mocks.requireAdmin.mockResolvedValue({ id: "admin-id", role: "ADMIN" });
+    const { tx } = artworkReviewDatabase({ id: ARTWORK_UUID, status: "PUBLISHED" });
+    const result = await unpublishArtwork(ARTWORK_UUID);
+    expect(result).toEqual({ ok: true, message: "Artwork unpublished." });
+    expect(tx.delete).not.toHaveBeenCalled();
+    const setArg = tx.update.mock.results[0].value.set.mock.calls[0][0] as Record<string, unknown>;
+    expect(setArg).toMatchObject({ status: "REJECTED", publishedAt: null });
+    expect(mocks.revalidate).toHaveBeenCalledWith("/admin");
+    expect(mocks.revalidate).toHaveBeenCalledWith("/seller");
+    expect(mocks.revalidate).toHaveBeenCalledWith("/");
+    expect(mocks.revalidate).toHaveBeenCalledWith("/artwork/test-artwork");
+  });
+
+  it("does not unpublish artwork outside PUBLISHED status", async () => {
+    mocks.requireAdmin.mockResolvedValue({ id: "admin-id", role: "ADMIN" });
+    const { tx } = artworkReviewDatabase({ id: ARTWORK_UUID, status: "PENDING_REVIEW" });
+    const result = await unpublishArtwork(ARTWORK_UUID);
+    expect(result).toEqual({ ok: false, message: "Only published artworks can be unpublished." });
+    expect(tx.update).not.toHaveBeenCalled();
   });
 });

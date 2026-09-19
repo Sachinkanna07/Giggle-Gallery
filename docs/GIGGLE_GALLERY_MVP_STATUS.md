@@ -35,6 +35,14 @@ The production flow has been manually exercised through opening Razorpay checkou
 - The existing production-facing implementation required no additional application-code change in this documentation pass.
 - Final handoff status, remaining risks, and reusable next-work prompts are documented here and in `docs/NEXT_WORK_PROMPTS.md`.
 
+## Safe public-artwork cleanup
+
+- `/admin` lists published artworks separately from pending review.
+- An `ADMIN` can use **Unpublish** to move only a `PUBLISHED` artwork to `REJECTED`.
+- Unpublishing removes the work from the public catalog while retaining its Blob image and any historical order/payment records.
+- The public test artwork has not been changed by this repository update. When cleanup is approved, open `/admin`, find `qwsedregthywrteyrut` under **Published artworks**, choose **Unpublish** once, then confirm it is absent from `/` and remains visible with `REJECTED` status in `/seller`.
+- Do not use direct production SQL, manually delete rows, or delete the Blob image for this cleanup.
+
 ## Manual production checks already completed
 
 - Seller artwork image uploaded successfully through Vercel Blob.

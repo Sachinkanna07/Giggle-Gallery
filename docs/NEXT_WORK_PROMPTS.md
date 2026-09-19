@@ -19,11 +19,11 @@ Final report: HEAD; provider mode; browser/signature/webhook results; order/paym
 ## 2. Clean up the public face artwork
 
 ```text
-Objective: Safely unpublish/archive qwsedregthywrteyrut after test evidence is preserved.
+Objective: Safely unpublish qwsedregthywrteyrut through the ADMIN-only `/admin` workflow after test evidence is preserved.
 Repo/context: [REPO], [URL], [ADMIN_ACCOUNT].
 Inspect first: exact artwork, current status, linked order items/payments/payouts, Blob references, and supported admin workflow.
-Do: prefer a recoverable product/admin action; preserve financial history and audit references; verify the exact target twice.
-Don't: delete directly with SQL, remove unrelated Blobs, delete orders/payments, or act before paid-flow evidence is complete.
+Do: find the title under **Published artworks**, select **Unpublish** once, preserve financial history and audit references, then verify the exact target twice.
+Don't: delete directly with SQL, remove unrelated Blobs, delete orders/payments, use the pending-review reject button, or act before paid-flow evidence is complete.
 Security: require admin authorization and avoid exposing buyer/seller/provider data.
 Tests: cover archive/unpublish authorization and historical-order rendering if code changes.
 Validation: npm run lint; npm run typecheck; npm test; npm run build; git diff --check; npm audit; browser-check public absence and historical records.
