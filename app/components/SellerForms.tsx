@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useRef, useState, type InvalidEvent, type MouseEvent } from "react";
+import { startTransition, useActionState, useRef, useState, useSyncExternalStore, type FormEvent, type InvalidEvent, type MouseEvent } from "react";
 import { upload } from "@vercel/blob/client";
 import { createArtwork, submitSellerApplication } from "@/app/actions/marketplace";
 
@@ -22,6 +22,7 @@ const artworkFieldLabels: Record<string, string> = {
   colors: "Dominant colors",
   ownershipDeclaration: "Ownership confirmation",
 };
+const subscribeToClientReady = () => () => {};
 
 function Status({ state }: { state: FormState }) {
   if (!state.message) return null;
@@ -60,6 +61,7 @@ export function ArtworkUploadForm({ sellerId }: { sellerId: string }) {
   const [uploadError, setUploadError] = useState("");
   const [validationError, setValidationError] = useState("");
   const [phase, setPhase] = useState<"idle" | "validating" | "uploading" | "submitting">("idle");
+  const clientReady = useSyncExternalStore(subscribeToClientReady, () => true, () => false);
   const invalidHandledRef = useRef(false);
 
   function showInvalidFieldError(field: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement) {
@@ -106,6 +108,14 @@ export function ArtworkUploadForm({ sellerId }: { sellerId: string }) {
     }
   }
 
+  function handleFormSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    setPhase("validating");
+    if (!validateArtworkForm(form)) return;
+    void action(new FormData(form));
+  }
+
   async function action(formData: FormData) {
     setValidationError("");
     setUploadError("");
@@ -124,7 +134,9 @@ export function ArtworkUploadForm({ sellerId }: { sellerId: string }) {
       formData.set("imageUrl", blob.url);
       formData.set("uploadIntentId", intentId);
       setPhase("submitting");
-      submit(formData);
+      startTransition(() => {
+        submit(formData);
+      });
     } catch (err) {
       let message = "Image upload failed. Please try again.";
       if (err instanceof Error && err.message) {
@@ -151,7 +163,7 @@ export function ArtworkUploadForm({ sellerId }: { sellerId: string }) {
       : state;
 
   return (
-    <form action={action} onInvalid={handleInvalid} onChange={() => setValidationError("")} className="grid gap-5 sm:grid-cols-2">
+    <form onSubmit={handleFormSubmit} onInvalid={handleInvalid} onChange={() => setValidationError("")} className="grid gap-5 sm:grid-cols-2">
       <label className="form-label sm:col-span-2">Artwork image<input name="image" type="file" accept="image/jpeg,image/png,image/webp" required className="field mt-2 file:mr-4 file:rounded-full file:border-0 file:bg-ivory file:px-4 file:py-2 file:text-ink" /></label>
       <input name="imageUrl" type="hidden" />
       <input name="uploadIntentId" type="hidden" />
@@ -169,6 +181,7 @@ export function ArtworkUploadForm({ sellerId }: { sellerId: string }) {
       <label className="form-label sm:col-span-2">Dominant colors<input name="colors" placeholder="blue, ivory, black" className="field mt-2" /></label>
       <label className="flex items-start gap-3 text-sm leading-relaxed text-white/60 sm:col-span-2"><input name="ownershipDeclaration" value="confirmed" type="checkbox" required className="mt-1 size-4" />I confirm that I own this work or hold the rights required to sell it.</label>
       <div className="grid gap-3 sm:col-span-2">
+        <p aria-live="polite" className="text-sm text-white/45">{clientReady ? "Artwork form ready" : "Loading artwork form…"}</p>
         <Status state={effectiveState} />
         <button type="submit" onClick={handleSubmitClick} disabled={pending || uploading} className="button-light w-fit disabled:opacity-50">{uploading ? "Uploading image…" : pending || (phase === "submitting" && !state.message) ? "Submitting artwork…" : "Submit artwork for review"}</button>
       </div>
