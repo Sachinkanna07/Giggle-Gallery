@@ -21,7 +21,7 @@ vi.mock("@/lib/blob-validation", () => ({
   isApprovedArtworkBlobUrl: (url: string, pathname: string) => url.includes(pathname),
 }));
 
-import { createArtwork, reviewSellerApplication, submitSellerApplication } from "../../app/actions/marketplace";
+import { createArtwork, reviewArtwork, reviewSellerApplication, submitSellerApplication } from "../../app/actions/marketplace";
 
 const activeUser = { id: "user-123", role: "USER" };
 const activeSeller = { id: "seller-456", role: "SELLER" };
@@ -340,5 +340,81 @@ describe("Artwork Upload", () => {
     expect(db.tx.insert).toHaveBeenCalledTimes(2);
     expect(db.tx.update).toHaveBeenCalledTimes(1);
     expect(mocks.revalidate).toHaveBeenCalledWith("/seller");
+  });
+});
+
+// ─── Admin Artwork Review ───────────────────────────────────────────────────
+
+const ARTWORK_UUID = "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e";
+
+function artworkReviewDatabase(artworkRow: Record<string, unknown> | null) {
+  const selectRow = vi.fn().mockResolvedValue(artworkRow ? [artworkRow] : []);
+  const whereSet = vi.fn().mockResolvedValue(undefined);
+  const db = {
+    select: vi.fn().mockReturnValue({
+      from: () => ({ where: () => ({ limit: selectRow }) }),
+    }),
+    update: vi.fn().mockReturnValue({
+      set: vi.fn().mockReturnValue({ where: whereSet }),
+    }),
+    insert: vi.fn(),
+    delete: vi.fn(),
+    transaction: vi.fn(),
+  };
+  mocks.getDb.mockReturnValue(db);
+  return { db, whereSet };
+}
+
+describe("Admin Artwork Review", () => {
+  it("blocks non-admins from reviewing artworks", async () => {
+    mocks.requireAdmin.mockRejectedValue(new Error("ADMIN_REQUIRED"));
+    const result = await reviewArtwork(ARTWORK_UUID, "PUBLISHED");
+    expect(result).toEqual({ ok: false, message: "Admin access required." });
+  });
+
+  it("returns error when artwork is not found", async () => {
+    mocks.requireAdmin.mockResolvedValue({ id: "admin-id", role: "ADMIN" });
+    artworkReviewDatabase(null);
+    const result = await reviewArtwork(ARTWORK_UUID, "PUBLISHED");
+    expect(result).toEqual({ ok: false, message: "Artwork not found." });
+  });
+
+  it("rejects review if artwork is not in PENDING_REVIEW status", async () => {
+    mocks.requireAdmin.mockResolvedValue({ id: "admin-id", role: "ADMIN" });
+    artworkReviewDatabase({ id: ARTWORK_UUID, status: "PUBLISHED" });
+    const result = await reviewArtwork(ARTWORK_UUID, "PUBLISHED");
+    expect(result).toEqual({ ok: false, message: "Only artworks in PENDING_REVIEW can be reviewed." });
+  });
+
+  it("admin can publish a PENDING_REVIEW artwork", async () => {
+    mocks.requireAdmin.mockResolvedValue({ id: "admin-id", role: "ADMIN" });
+    const { db } = artworkReviewDatabase({ id: ARTWORK_UUID, status: "PENDING_REVIEW" });
+    const result = await reviewArtwork(ARTWORK_UUID, "PUBLISHED");
+    expect(result).toEqual({ ok: true, message: "Artwork published." });
+    expect(db.update).toHaveBeenCalled();
+    const setArg = db.update.mock.results[0].value.set.mock.calls[0][0] as Record<string, unknown>;
+    expect(setArg.status).toBe("PUBLISHED");
+    expect(setArg.publishedAt).toBeInstanceOf(Date);
+    expect(mocks.revalidate).toHaveBeenCalledWith("/admin");
+    expect(mocks.revalidate).toHaveBeenCalledWith("/seller");
+    expect(mocks.revalidate).toHaveBeenCalledWith("/");
+  });
+
+  it("admin can reject a PENDING_REVIEW artwork", async () => {
+    mocks.requireAdmin.mockResolvedValue({ id: "admin-id", role: "ADMIN" });
+    const { db } = artworkReviewDatabase({ id: ARTWORK_UUID, status: "PENDING_REVIEW" });
+    const result = await reviewArtwork(ARTWORK_UUID, "REJECTED");
+    expect(result).toEqual({ ok: true, message: "Artwork rejected." });
+    const setArg = db.update.mock.results[0].value.set.mock.calls[0][0] as Record<string, unknown>;
+    expect(setArg.status).toBe("REJECTED");
+    expect(setArg.publishedAt).toBeNull();
+  });
+
+  it("reviewArtwork rejects an invalid decision value", async () => {
+    mocks.requireAdmin.mockResolvedValue({ id: "admin-id", role: "ADMIN" });
+    artworkReviewDatabase({ id: ARTWORK_UUID, status: "PENDING_REVIEW" });
+    // @ts-expect-error intentionally passing invalid decision
+    const result = await reviewArtwork(ARTWORK_UUID, "DRAFT");
+    expect(result.ok).toBe(false);
   });
 });

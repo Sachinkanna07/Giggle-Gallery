@@ -350,3 +350,41 @@ export async function submitReview(_: unknown, formData: FormData) {
     return { ok: false, message: friendlyError(error) };
   }
 }
+
+export async function reviewArtwork(artworkId: string, decision: "PUBLISHED" | "REJECTED"): Promise<{ ok: boolean; message: string }> {
+  try {
+    await requireAdmin();
+    const id = idSchema.parse(artworkId);
+    const validatedDecision = z.enum(["PUBLISHED", "REJECTED"]).parse(decision);
+    const db = getDb();
+    const [found] = await db
+      .select({ id: artworks.id, status: artworks.status })
+      .from(artworks)
+      .where(eq(artworks.id, id))
+      .limit(1);
+    if (!found) return { ok: false, message: "Artwork not found." };
+    if (found.status !== "PENDING_REVIEW") return { ok: false, message: "Only artworks in PENDING_REVIEW can be reviewed." };
+    await db
+      .update(artworks)
+      .set({
+        status: validatedDecision,
+        publishedAt: validatedDecision === "PUBLISHED" ? new Date() : null,
+        updatedAt: new Date(),
+      })
+      .where(eq(artworks.id, id));
+    revalidatePath("/admin");
+    revalidatePath("/seller");
+    revalidatePath("/");
+    return { ok: true, message: validatedDecision === "PUBLISHED" ? "Artwork published." : "Artwork rejected." };
+  } catch (error) {
+    if (error instanceof Error && error.message === "ADMIN_REQUIRED") return { ok: false, message: "Admin access required." };
+    if (error instanceof Error && error.message === "RATE_LIMITED") return { ok: false, message: "Too many requests. Please wait a moment." };
+    return { ok: false, message: "We could not save that change. Please try again." };
+  }
+}
+
+export async function reviewArtworkForm(formData: FormData): Promise<void> {
+  const artworkId = String(formData.get("artworkId") ?? "");
+  const decision = z.enum(["PUBLISHED", "REJECTED"]).parse(String(formData.get("decision") ?? ""));
+  await reviewArtwork(artworkId, decision);
+}
