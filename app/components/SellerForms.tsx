@@ -41,9 +41,15 @@ export function SellerApplicationForm({ email, name }: { email?: string | null; 
 export function ArtworkUploadForm({ sellerId }: { sellerId: string }) {
   const [state, submit, pending] = useActionState(createArtwork, initialState);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+
   async function action(formData: FormData) {
+    setUploadError("");
     const file = formData.get("image");
-    if (!(file instanceof File) || !file.size) return;
+    if (!(file instanceof File) || !file.size) {
+      setUploadError("Please select an image file to upload.");
+      return;
+    }
     setUploading(true);
     try {
       const intentId = crypto.randomUUID();
@@ -52,13 +58,25 @@ export function ArtworkUploadForm({ sellerId }: { sellerId: string }) {
       formData.set("imageUrl", blob.url);
       formData.set("uploadIntentId", intentId);
       submit(formData);
+    } catch (err) {
+      let message = "Image upload failed. Please try again.";
+      if (err instanceof Error && err.message) {
+        const raw = err.message;
+        if (!/token|secret|key|bearer|postgres|database|url|http|@/i.test(raw) && raw.length <= 120) {
+          message = `Image upload failed: ${raw}`;
+        }
+      }
+      setUploadError(message);
     } finally {
       setUploading(false);
     }
   }
+
+  const effectiveState = uploadError ? { ok: false, message: uploadError } : state;
+
   return (
     <form action={action} className="grid gap-5 sm:grid-cols-2">
-      <Status state={state} />
+      <Status state={effectiveState} />
       <label className="form-label sm:col-span-2">Artwork image<input name="image" type="file" accept="image/jpeg,image/png,image/webp" required className="field mt-2 file:mr-4 file:rounded-full file:border-0 file:bg-ivory file:px-4 file:py-2 file:text-ink" /></label>
       <input name="imageUrl" type="hidden" />
       <input name="uploadIntentId" type="hidden" />
