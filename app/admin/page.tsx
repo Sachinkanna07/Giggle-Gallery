@@ -130,12 +130,16 @@ export default async function AdminPage() {
                   </span>
                 </div>
                 <p className="mt-5 max-w-3xl text-sm leading-relaxed text-white/60">{application.biography}</p>
-                <form action={reviewSellerApplicationForm} className="mt-6 flex flex-wrap gap-3">
-                  <input type="hidden" name="applicationId" value={application.id} />
-                  <button name="decision" value="APPROVED" className="button-light">Approve</button>
-                  <button name="decision" value="NEEDS_REVIEW" className="button-outline">Needs review</button>
-                  <button name="decision" value="REJECTED" className="rounded-full border border-red-300/25 px-5 py-3 text-sm text-red-100">Reject</button>
-                </form>
+                {application.status === "PENDING" || application.status === "NEEDS_REVIEW" ? (
+                  <form action={reviewSellerApplicationForm} className="mt-6 flex flex-wrap gap-3">
+                    <input type="hidden" name="applicationId" value={application.id} />
+                    <button name="decision" value="APPROVED" className="button-light">Approve</button>
+                    <button name="decision" value="NEEDS_REVIEW" className="button-outline">Needs review</button>
+                    <button name="decision" value="REJECTED" className="rounded-full border border-red-300/25 px-5 py-3 text-sm text-red-100">Reject</button>
+                  </form>
+                ) : (
+                  <p className="mt-6 text-sm text-white/40">Review complete. Resubmission is required before another decision.</p>
+                )}
               </article>
             ))}
             {!applications.length && (

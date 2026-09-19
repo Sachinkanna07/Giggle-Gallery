@@ -224,6 +224,17 @@ describe("Admin Approval", () => {
     expect(roleUpdate).toBeDefined();
     expect(roleUpdate!.role).toBe("SELLER");
   });
+
+  it("does not re-review a finalized seller application", async () => {
+    mocks.requireAdmin.mockResolvedValue({ id: "admin-id", role: "ADMIN" });
+    const { tx } = approvalDatabase({ ...baseApplication, status: "APPROVED" });
+
+    const result = await reviewSellerApplication(APP_UUID, "REJECTED");
+
+    expect(result).toEqual({ ok: false, error: "This application has already been finalized." });
+    expect(tx.update).not.toHaveBeenCalled();
+    expect(tx.insert).not.toHaveBeenCalled();
+  });
 });
 
 
@@ -350,19 +361,19 @@ const ARTWORK_UUID = "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e";
 function artworkReviewDatabase(artworkRow: Record<string, unknown> | null) {
   const selectRow = vi.fn().mockResolvedValue(artworkRow ? [artworkRow] : []);
   const whereSet = vi.fn().mockResolvedValue(undefined);
-  const db = {
+  const tx = {
     select: vi.fn().mockReturnValue({
-      from: () => ({ where: () => ({ limit: selectRow }) }),
+      from: () => ({ where: () => ({ limit: () => ({ for: selectRow }) }) }),
     }),
     update: vi.fn().mockReturnValue({
       set: vi.fn().mockReturnValue({ where: whereSet }),
     }),
     insert: vi.fn(),
     delete: vi.fn(),
-    transaction: vi.fn(),
   };
+  const db = { transaction: vi.fn(async (callback: (value: typeof tx) => Promise<unknown>) => callback(tx)) };
   mocks.getDb.mockReturnValue(db);
-  return { db, whereSet };
+  return { db, tx, whereSet };
 }
 
 describe("Admin Artwork Review", () => {
@@ -388,11 +399,11 @@ describe("Admin Artwork Review", () => {
 
   it("admin can publish a PENDING_REVIEW artwork", async () => {
     mocks.requireAdmin.mockResolvedValue({ id: "admin-id", role: "ADMIN" });
-    const { db } = artworkReviewDatabase({ id: ARTWORK_UUID, status: "PENDING_REVIEW" });
+    const { tx } = artworkReviewDatabase({ id: ARTWORK_UUID, status: "PENDING_REVIEW" });
     const result = await reviewArtwork(ARTWORK_UUID, "PUBLISHED");
     expect(result).toEqual({ ok: true, message: "Artwork published." });
-    expect(db.update).toHaveBeenCalled();
-    const setArg = db.update.mock.results[0].value.set.mock.calls[0][0] as Record<string, unknown>;
+    expect(tx.update).toHaveBeenCalled();
+    const setArg = tx.update.mock.results[0].value.set.mock.calls[0][0] as Record<string, unknown>;
     expect(setArg.status).toBe("PUBLISHED");
     expect(setArg.publishedAt).toBeInstanceOf(Date);
     expect(mocks.revalidate).toHaveBeenCalledWith("/admin");
@@ -402,10 +413,10 @@ describe("Admin Artwork Review", () => {
 
   it("admin can reject a PENDING_REVIEW artwork", async () => {
     mocks.requireAdmin.mockResolvedValue({ id: "admin-id", role: "ADMIN" });
-    const { db } = artworkReviewDatabase({ id: ARTWORK_UUID, status: "PENDING_REVIEW" });
+    const { tx } = artworkReviewDatabase({ id: ARTWORK_UUID, status: "PENDING_REVIEW" });
     const result = await reviewArtwork(ARTWORK_UUID, "REJECTED");
     expect(result).toEqual({ ok: true, message: "Artwork rejected." });
-    const setArg = db.update.mock.results[0].value.set.mock.calls[0][0] as Record<string, unknown>;
+    const setArg = tx.update.mock.results[0].value.set.mock.calls[0][0] as Record<string, unknown>;
     expect(setArg.status).toBe("REJECTED");
     expect(setArg.publishedAt).toBeNull();
   });

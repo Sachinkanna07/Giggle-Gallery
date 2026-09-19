@@ -302,9 +302,10 @@ export async function reviewSellerApplication(applicationId: string, decision: "
     const id = idSchema.parse(applicationId);
     const validatedDecision = z.enum(["APPROVED", "REJECTED", "NEEDS_REVIEW"]).parse(decision);
     const db = getDb();
-    const found = await db.transaction(async (tx) => {
+    const outcome = await db.transaction(async (tx) => {
       const [application] = await tx.select().from(artistApplications).where(eq(artistApplications.id, id)).limit(1).for("update");
-      if (!application) return false;
+      if (!application) return "NOT_FOUND" as const;
+      if (application.status !== "PENDING" && application.status !== "NEEDS_REVIEW") return "FINALIZED" as const;
       await tx.update(artistApplications).set({ status: validatedDecision, reviewedBy: admin.id, reviewedAt: new Date(), updatedAt: new Date() }).where(eq(artistApplications.id, id));
       if (validatedDecision === "APPROVED") {
         const slug = `${application.displayName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}-${application.id.slice(0, 6)}`;
@@ -315,9 +316,10 @@ export async function reviewSellerApplication(applicationId: string, decision: "
           and(eq(users.id, application.userId), eq(users.role, "BUYER")),
         );
       }
-      return true;
+      return "UPDATED" as const;
     });
-    if (!found) return { ok: false, error: "Application not found." };
+    if (outcome === "NOT_FOUND") return { ok: false, error: "Application not found." };
+    if (outcome === "FINALIZED") return { ok: false, error: "This application has already been finalized." };
     revalidatePath("/admin");
     revalidatePath("/seller");
     return { ok: true };
@@ -357,21 +359,27 @@ export async function reviewArtwork(artworkId: string, decision: "PUBLISHED" | "
     const id = idSchema.parse(artworkId);
     const validatedDecision = z.enum(["PUBLISHED", "REJECTED"]).parse(decision);
     const db = getDb();
-    const [found] = await db
-      .select({ id: artworks.id, status: artworks.status })
-      .from(artworks)
-      .where(eq(artworks.id, id))
-      .limit(1);
-    if (!found) return { ok: false, message: "Artwork not found." };
-    if (found.status !== "PENDING_REVIEW") return { ok: false, message: "Only artworks in PENDING_REVIEW can be reviewed." };
-    await db
-      .update(artworks)
-      .set({
-        status: validatedDecision,
-        publishedAt: validatedDecision === "PUBLISHED" ? new Date() : null,
-        updatedAt: new Date(),
-      })
-      .where(eq(artworks.id, id));
+    const outcome = await db.transaction(async (tx) => {
+      const [found] = await tx
+        .select({ id: artworks.id, status: artworks.status })
+        .from(artworks)
+        .where(eq(artworks.id, id))
+        .limit(1)
+        .for("update");
+      if (!found) return "NOT_FOUND" as const;
+      if (found.status !== "PENDING_REVIEW") return "NOT_PENDING" as const;
+      await tx
+        .update(artworks)
+        .set({
+          status: validatedDecision,
+          publishedAt: validatedDecision === "PUBLISHED" ? new Date() : null,
+          updatedAt: new Date(),
+        })
+        .where(eq(artworks.id, id));
+      return "UPDATED" as const;
+    });
+    if (outcome === "NOT_FOUND") return { ok: false, message: "Artwork not found." };
+    if (outcome === "NOT_PENDING") return { ok: false, message: "Only artworks in PENDING_REVIEW can be reviewed." };
     revalidatePath("/admin");
     revalidatePath("/seller");
     revalidatePath("/");

@@ -239,5 +239,6 @@ export async function getSellerSnapshot(userId: string) {
     db.select({ id: orderItems.id, orderNumber: orders.orderNumber, buyerReference: orders.buyerId, title: orderItems.titleSnapshot, quantity: orderItems.quantity, amount: orderItems.lineTotal, sellerEarnings: orderItems.sellerEarnings, status: orders.status, paymentStatus: orders.paymentStatus, createdAt: orderItems.createdAt }).from(orderItems).innerJoin(orders, eq(orderItems.orderId, orders.id)).where(and(eq(orderItems.artistId, artist.id), eq(orders.paymentStatus, "PAID"), inArray(orders.status, ["CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED"]))).orderBy(desc(orderItems.createdAt)),
     db.select().from(payouts).where(eq(payouts.artistId, artist.id)).orderBy(desc(payouts.createdAt)),
   ]);
-  return { artist, application: application ?? null, artworks: sellerArtworks, sales, payouts: sellerPayouts };
+  const verifiedSales = sales.filter((sale) => sale.paymentStatus === "PAID" && ["CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED"].includes(sale.status));
+  return { artist, application: application ?? null, artworks: sellerArtworks, sales: verifiedSales, payouts: sellerPayouts };
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getDb: vi.fn(),
@@ -10,66 +10,55 @@ vi.mock("server-only", () => ({}));
 
 import { getSellerSnapshot } from "../../lib/marketplace-data";
 
+function setupDb(sales: Record<string, unknown>[]) {
+  let selectCall = 0;
+  mocks.getDb.mockReturnValue({
+    select: vi.fn(() => {
+      selectCall += 1;
+      if (selectCall === 1) {
+        return { from: () => ({ where: () => ({ limit: vi.fn().mockResolvedValue([{ id: "artist-1", displayName: "Test Artist" }]) }) }) };
+      }
+      if (selectCall === 2) {
+        return { from: () => ({ where: () => ({ limit: vi.fn().mockResolvedValue([]) }) }) };
+      }
+      if (selectCall === 4) {
+        return { from: () => ({ innerJoin: () => ({ where: () => ({ orderBy: vi.fn().mockResolvedValue(sales) }) }) }) };
+      }
+      return { from: () => ({ where: () => ({ orderBy: vi.fn().mockResolvedValue([]) }) }) };
+    }),
+  });
+}
+
 describe("Seller Sales Snapshot", () => {
-  it("filters out pending unpaid orders from sales and revenue", async () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
     mocks.hasDatabase.mockReturnValue(true);
-    
-    // We want to test that the DB query generated inside getSellerSnapshot 
-    // actually applies the `orders.paymentStatus === 'PAID'` and `orders.status IN ('CONFIRMED', ...)` filters.
-    // Instead of mocking the entire drizzle chain perfectly to verify the SQL string,
-    // we can mock the return value and verify the structure of the mocked chain's usage, 
-    // or just rely on the implementation if testing the mock chain is too brittle.
-    
-    const mockSalesQuery = vi.fn().mockReturnValue({
-      orderBy: vi.fn().mockResolvedValue([{
-        id: "sale-1",
-        orderNumber: "ORD-001",
-        quantity: 1,
-        amount: "100.00",
-        sellerEarnings: "90.00",
-        status: "CONFIRMED",
-        paymentStatus: "PAID",
-      }])
-    });
+  });
 
-    const mockWhere = vi.fn().mockReturnValue({
-      orderBy: mockSalesQuery().orderBy
-    });
-
-    const mockInnerJoin = vi.fn().mockReturnValue({
-      where: mockWhere
-    });
-
-    const db = {
-      select: vi.fn().mockImplementation(() => ({
-        from: vi.fn().mockImplementation(() => {
-          // Identify if it's artistProfiles, artistApplications, artworks, orderItems, or payouts based on the mock calls
-          // We can just return a chain that resolves to the dummy data
-          return {
-            where: vi.fn().mockReturnValue({
-              limit: vi.fn().mockResolvedValue([{ id: "artist-1", displayName: "Test Artist" }]),
-              orderBy: vi.fn().mockResolvedValue([])
-            }),
-            innerJoin: mockInnerJoin,
-            orderBy: vi.fn().mockResolvedValue([])
-          };
-        })
-      }))
-    };
-
-    mocks.getDb.mockReturnValue(db);
+  it("does not count a pending unpaid order as a seller sale or revenue", async () => {
+    setupDb([{
+      id: "pending-sale",
+      sellerEarnings: "90.00",
+      status: "PENDING",
+      paymentStatus: "PENDING",
+    }]);
 
     const snapshot = await getSellerSnapshot("user-1");
-    
-    expect(snapshot.artist).toBeDefined();
-    expect(snapshot.sales).toBeDefined();
-    
-    // Check that the where clause was called with the 'and' conditions.
-    // Drizzle's `and` returns an SQL wrapper object. We can check if it's called with multiple arguments or an object that stringifies to SQL containing our checks.
-    expect(mockWhere).toHaveBeenCalled();
-    const whereArg = mockWhere.mock.calls[0][0];
-    
-    // In Drizzle, the `and` creates a complex object. We just want to ensure we added the paymentStatus and status checks.
-    expect(whereArg).toBeDefined();
+
+    expect(snapshot.sales).toEqual([]);
+    expect(snapshot.sales.reduce((total, sale) => total + Number(sale.sellerEarnings), 0)).toBe(0);
+  });
+
+  it("counts only paid orders in an active fulfillment state", async () => {
+    setupDb([
+      { id: "paid-sale", sellerEarnings: "90.00", status: "CONFIRMED", paymentStatus: "PAID" },
+      { id: "unpaid-sale", sellerEarnings: "70.00", status: "CONFIRMED", paymentStatus: "PENDING" },
+      { id: "cancelled-sale", sellerEarnings: "50.00", status: "CANCELLED", paymentStatus: "PAID" },
+    ]);
+
+    const snapshot = await getSellerSnapshot("user-1");
+
+    expect(snapshot.sales.map((sale) => sale.id)).toEqual(["paid-sale"]);
+    expect(snapshot.sales.reduce((total, sale) => total + Number(sale.sellerEarnings), 0)).toBe(90);
   });
 });
