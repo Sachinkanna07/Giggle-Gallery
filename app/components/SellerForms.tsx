@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useRef, useState, type InvalidEvent } from "react";
+import { useActionState, useRef, useState, type InvalidEvent, type MouseEvent } from "react";
 import { upload } from "@vercel/blob/client";
 import { createArtwork, submitSellerApplication } from "@/app/actions/marketplace";
 
@@ -59,35 +59,71 @@ export function ArtworkUploadForm({ sellerId }: { sellerId: string }) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [validationError, setValidationError] = useState("");
+  const [phase, setPhase] = useState<"idle" | "validating" | "uploading" | "submitting">("idle");
   const invalidHandledRef = useRef(false);
+
+  function showInvalidFieldError(field: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement) {
+    const label = artworkFieldLabels[field.name] ?? "This field";
+    setValidationError(`Please check ${label}: ${field.validationMessage}`);
+    field.focus();
+    field.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
 
   function handleInvalid(event: InvalidEvent<HTMLFormElement>) {
     const field = event.target as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
     if (invalidHandledRef.current) return;
     invalidHandledRef.current = true;
-    const label = artworkFieldLabels[field.name] ?? "This field";
-    setValidationError(`Please check ${label}: ${field.validationMessage}`);
-    field.focus();
-    field.scrollIntoView({ behavior: "smooth", block: "center" });
+    showInvalidFieldError(field);
     window.setTimeout(() => {
       invalidHandledRef.current = false;
     }, 0);
   }
 
+  function validateArtworkForm(form: HTMLFormElement) {
+    invalidHandledRef.current = true;
+    const valid = form.checkValidity();
+    if (valid) {
+      invalidHandledRef.current = false;
+      setValidationError("");
+      return true;
+    }
+
+    const field = form.querySelector(":invalid") as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null;
+    if (field) showInvalidFieldError(field);
+    else setValidationError("Please check the artwork details and try again.");
+    window.setTimeout(() => {
+      invalidHandledRef.current = false;
+    }, 0);
+    return false;
+  }
+
+  function handleSubmitClick(event: MouseEvent<HTMLButtonElement>) {
+    const form = event.currentTarget.form;
+    setPhase("validating");
+    if (!form || !validateArtworkForm(form)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }
+
   async function action(formData: FormData) {
+    setValidationError("");
     setUploadError("");
     const file = formData.get("image");
     if (!(file instanceof File) || !file.size) {
       setUploadError("Please select an image file to upload.");
+      setPhase("idle");
       return;
     }
     setUploading(true);
+    setPhase("uploading");
     try {
       const intentId = crypto.randomUUID();
       const safeFilename = file.name.replace(/[^a-zA-Z0-9._-]/g, "-").slice(-150) || "artwork-image";
       const blob = await upload(`artworks/${sellerId}/${intentId}/${safeFilename}`, file, { access: "public", handleUploadUrl: "/api/uploads/artwork", clientPayload: JSON.stringify({ intentId }) });
       formData.set("imageUrl", blob.url);
       formData.set("uploadIntentId", intentId);
+      setPhase("submitting");
       submit(formData);
     } catch (err) {
       let message = "Image upload failed. Please try again.";
@@ -98,6 +134,7 @@ export function ArtworkUploadForm({ sellerId }: { sellerId: string }) {
         }
       }
       setUploadError(message);
+      setPhase("idle");
     } finally {
       setUploading(false);
     }
@@ -107,11 +144,14 @@ export function ArtworkUploadForm({ sellerId }: { sellerId: string }) {
     ? { ok: false, message: validationError }
     : uploadError
       ? { ok: false, message: uploadError }
+      : phase === "uploading"
+        ? { ok: false, message: "Uploading image…" }
+        : phase === "submitting" && (pending || !state.message)
+          ? { ok: false, message: "Submitting artwork…" }
       : state;
 
   return (
     <form action={action} onInvalid={handleInvalid} onChange={() => setValidationError("")} className="grid gap-5 sm:grid-cols-2">
-      <Status state={effectiveState} />
       <label className="form-label sm:col-span-2">Artwork image<input name="image" type="file" accept="image/jpeg,image/png,image/webp" required className="field mt-2 file:mr-4 file:rounded-full file:border-0 file:bg-ivory file:px-4 file:py-2 file:text-ink" /></label>
       <input name="imageUrl" type="hidden" />
       <input name="uploadIntentId" type="hidden" />
@@ -128,7 +168,10 @@ export function ArtworkUploadForm({ sellerId }: { sellerId: string }) {
       <label className="form-label">Stock<input name="stock" type="number" min="1" max="999" required defaultValue="1" className="field mt-2" /></label>
       <label className="form-label sm:col-span-2">Dominant colors<input name="colors" placeholder="blue, ivory, black" className="field mt-2" /></label>
       <label className="flex items-start gap-3 text-sm leading-relaxed text-white/60 sm:col-span-2"><input name="ownershipDeclaration" value="confirmed" type="checkbox" required className="mt-1 size-4" />I confirm that I own this work or hold the rights required to sell it.</label>
-      <button type="submit" onClick={() => { setValidationError(""); invalidHandledRef.current = false; }} disabled={pending || uploading} className="button-light w-fit disabled:opacity-50 sm:col-span-2">{uploading ? "Uploading image…" : pending ? "Submitting…" : "Submit artwork for review"}</button>
+      <div className="grid gap-3 sm:col-span-2">
+        <Status state={effectiveState} />
+        <button type="submit" onClick={handleSubmitClick} disabled={pending || uploading} className="button-light w-fit disabled:opacity-50">{uploading ? "Uploading image…" : pending || (phase === "submitting" && !state.message) ? "Submitting artwork…" : "Submit artwork for review"}</button>
+      </div>
     </form>
   );
 }
