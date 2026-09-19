@@ -1,11 +1,27 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState, type InvalidEvent } from "react";
 import { upload } from "@vercel/blob/client";
 import { createArtwork, submitSellerApplication } from "@/app/actions/marketplace";
 
 type FormState = { ok: boolean; message: string };
 const initialState: FormState = { ok: false, message: "" };
+const artworkFieldLabels: Record<string, string> = {
+  image: "Artwork image",
+  title: "Title",
+  description: "Description",
+  artistStatement: "Artist statement",
+  price: "Price",
+  currency: "Currency",
+  medium: "Medium",
+  year: "Year",
+  widthCm: "Width",
+  heightCm: "Height",
+  type: "Format",
+  stock: "Stock",
+  colors: "Dominant colors",
+  ownershipDeclaration: "Ownership confirmation",
+};
 
 function Status({ state }: { state: FormState }) {
   if (!state.message) return null;
@@ -42,6 +58,21 @@ export function ArtworkUploadForm({ sellerId }: { sellerId: string }) {
   const [state, submit, pending] = useActionState(createArtwork, initialState);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [validationError, setValidationError] = useState("");
+  const invalidHandledRef = useRef(false);
+
+  function handleInvalid(event: InvalidEvent<HTMLFormElement>) {
+    const field = event.target as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+    if (invalidHandledRef.current) return;
+    invalidHandledRef.current = true;
+    const label = artworkFieldLabels[field.name] ?? "This field";
+    setValidationError(`Please check ${label}: ${field.validationMessage}`);
+    field.focus();
+    field.scrollIntoView({ behavior: "smooth", block: "center" });
+    window.setTimeout(() => {
+      invalidHandledRef.current = false;
+    }, 0);
+  }
 
   async function action(formData: FormData) {
     setUploadError("");
@@ -72,10 +103,14 @@ export function ArtworkUploadForm({ sellerId }: { sellerId: string }) {
     }
   }
 
-  const effectiveState = uploadError ? { ok: false, message: uploadError } : state;
+  const effectiveState = validationError
+    ? { ok: false, message: validationError }
+    : uploadError
+      ? { ok: false, message: uploadError }
+      : state;
 
   return (
-    <form action={action} className="grid gap-5 sm:grid-cols-2">
+    <form action={action} onInvalid={handleInvalid} onChange={() => setValidationError("")} className="grid gap-5 sm:grid-cols-2">
       <Status state={effectiveState} />
       <label className="form-label sm:col-span-2">Artwork image<input name="image" type="file" accept="image/jpeg,image/png,image/webp" required className="field mt-2 file:mr-4 file:rounded-full file:border-0 file:bg-ivory file:px-4 file:py-2 file:text-ink" /></label>
       <input name="imageUrl" type="hidden" />
@@ -93,7 +128,7 @@ export function ArtworkUploadForm({ sellerId }: { sellerId: string }) {
       <label className="form-label">Stock<input name="stock" type="number" min="1" max="999" required defaultValue="1" className="field mt-2" /></label>
       <label className="form-label sm:col-span-2">Dominant colors<input name="colors" placeholder="blue, ivory, black" className="field mt-2" /></label>
       <label className="flex items-start gap-3 text-sm leading-relaxed text-white/60 sm:col-span-2"><input name="ownershipDeclaration" value="confirmed" type="checkbox" required className="mt-1 size-4" />I confirm that I own this work or hold the rights required to sell it.</label>
-      <button disabled={pending || uploading} className="button-light w-fit disabled:opacity-50 sm:col-span-2">{uploading ? "Uploading image…" : pending ? "Submitting…" : "Submit artwork for review"}</button>
+      <button type="submit" onClick={() => { setValidationError(""); invalidHandledRef.current = false; }} disabled={pending || uploading} className="button-light w-fit disabled:opacity-50 sm:col-span-2">{uploading ? "Uploading image…" : pending ? "Submitting…" : "Submit artwork for review"}</button>
     </form>
   );
 }
