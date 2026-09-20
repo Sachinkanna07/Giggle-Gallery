@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { Check, MapPin, Plus } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import type { ArtistSummary } from "@/lib/marketplace-data";
@@ -29,7 +30,8 @@ export function ArtistDialog({ artist, followed, works, onClose, onFollow, onArt
               <DialogDescription className="mt-4 max-w-xl text-base leading-relaxed text-white/70">{artist.bio}</DialogDescription>
               <div className="mt-6 flex flex-wrap items-center gap-5 text-sm text-white/55">
                 <span>{artist.discipline}</span><span>{artist.works} artworks</span><span>{artist.rating.toFixed(1)} rating</span><span>{artist.followers} followers</span>
-                <button onClick={onFollow} className={`ml-auto inline-flex items-center gap-2 rounded-full px-5 py-3 font-semibold transition ${followed ? "bg-white text-black" : "bg-cobalt text-white hover:bg-cobalt-light hover:text-black"}`}>
+                <Link href={`/artist/${artist.slug}`} className="underline decoration-white/20 underline-offset-4 hover:text-white">View public profile</Link>
+                <button aria-pressed={followed} onClick={onFollow} className={`ml-auto inline-flex items-center gap-2 rounded-full px-5 py-3 font-semibold transition ${followed ? "bg-white text-black" : "bg-cobalt text-white hover:bg-cobalt-light hover:text-black"}`}>
                   {followed ? <Check size={16} /> : <Plus size={16} />} {followed ? "Following" : "Follow"}
                 </button>
               </div>

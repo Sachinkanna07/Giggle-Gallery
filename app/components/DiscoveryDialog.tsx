@@ -72,7 +72,7 @@ export function DiscoveryDialog({ open, onOpenChange, onComplete }: Props) {
             {(step === 0 || step === 1 || step === 3) && (
               <div className="mt-8 grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {choices.map((choice) => (
-                  <button key={choice} onClick={() => setSelected(choice)} className={`flex min-h-14 items-center justify-between rounded-xl border px-4 text-left text-sm transition ${selected === choice ? "border-cobalt-light bg-cobalt/20 text-white" : "border-white/10 bg-white/[.03] text-white/65 hover:border-white/30 hover:text-white"}`}>
+                  <button key={choice} aria-pressed={selected === choice} onClick={() => setSelected(choice)} className={`flex min-h-14 items-center justify-between rounded-xl border px-4 text-left text-sm transition ${selected === choice ? "border-cobalt-light bg-cobalt/20 text-white" : "border-white/10 bg-white/[.03] text-white/65 hover:border-white/30 hover:text-white"}`}>
                     {choice} {selected === choice && <Check size={16} />}
                   </button>
                 ))}
@@ -82,7 +82,7 @@ export function DiscoveryDialog({ open, onOpenChange, onComplete }: Props) {
             {step === 2 && (
               <div className="mt-9 grid grid-cols-3 gap-4 sm:grid-cols-6">
                 {colors.map((option) => (
-                  <button key={option.value} onClick={() => setColor(option.value)} aria-label={option.name} className="group flex flex-col items-center gap-3 text-xs text-white/55">
+                  <button key={option.value} aria-pressed={color === option.value} onClick={() => setColor(option.value)} aria-label={option.name} className="group flex flex-col items-center gap-3 text-xs text-white/55">
                     <span className={`grid aspect-square w-full place-items-center rounded-full border-2 transition ${color === option.value ? "scale-90 border-white" : "border-transparent group-hover:scale-95"}`} style={{ background: option.color }}>
                       {color === option.value && <Check size={18} className={option.value === "ivory" ? "text-black" : "text-white"} />}
                     </span>
@@ -96,7 +96,7 @@ export function DiscoveryDialog({ open, onOpenChange, onComplete }: Props) {
               <div className="mt-10 space-y-10 rounded-2xl border border-white/10 bg-white/[.025] p-6 sm:p-8">
                 <div>
                   <div className="mb-5 flex justify-between text-sm"><span>Calm</span><span>Intense</span></div>
-                  <Slider value={energy} onValueChange={setEnergy} className="[&_[data-slot=slider-range]]:bg-cobalt-light [&_[data-slot=slider-thumb]]:border-cobalt-light" />
+                  <Slider aria-label="Visual energy" value={energy} onValueChange={setEnergy} className="[&_[data-slot=slider-range]]:bg-cobalt-light [&_[data-slot=slider-thumb]]:border-cobalt-light" />
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-center text-xs text-white/50">
                   <span className={energy[0] < 40 ? "text-cobalt-light" : ""}>Minimal</span>

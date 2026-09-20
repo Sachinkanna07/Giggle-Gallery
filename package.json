@@ -9,7 +9,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint . --ignore-pattern .next --ignore-pattern dist --ignore-pattern build",
+    "lint": "eslint . --ignore-pattern .next --ignore-pattern dist --ignore-pattern build --ignore-pattern .kilo",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:unit": "vitest run tests/unit",

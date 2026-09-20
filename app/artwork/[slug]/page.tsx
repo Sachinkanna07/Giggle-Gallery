@@ -18,7 +18,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const artwork = await getArtworkBySlug(slug);
   if (!artwork) return { title: "Artwork not found | Giggle Gallery" };
-  return { title: `${artwork.title} by ${artwork.artist} | Giggle Gallery`, description: artwork.description, openGraph: { title: artwork.title, description: artwork.description, images: artwork.image.startsWith("http") ? [artwork.image] : [] } };
+  return {
+    title: `${artwork.title} by ${artwork.artist}`,
+    description: artwork.description,
+    alternates: { canonical: `/artwork/${artwork.slug}` },
+    openGraph: { title: artwork.title, description: artwork.description, type: "article", images: [artwork.image] },
+    twitter: { card: "summary_large_image", title: artwork.title, description: artwork.description, images: [artwork.image] },
+  };
 }
 
 export default async function ArtworkPage({ params }: Props) {

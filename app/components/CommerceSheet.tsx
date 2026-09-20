@@ -52,7 +52,7 @@ export function CommerceSheet({ open, onOpenChange, items, onQuantity, onClear }
             <div className="space-y-5">
               {items.map((item) => (
                 <div key={item.artworkId} className={`grid grid-cols-[78px_1fr_auto] gap-4 border-b pb-5 ${item.isAvailable ? "border-white/10" : "border-red-500/30 bg-red-950/20 p-3 rounded-xl"}`}>
-                  <div className="relative aspect-[4/5] overflow-hidden rounded"><Image src={item.image} alt="" fill sizes="78px" className="object-cover" /></div>
+                  <div className="relative aspect-[4/5] overflow-hidden rounded"><Image src={item.image} alt={`${item.title} by ${item.artist}`} fill sizes="78px" className="object-cover" /></div>
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="font-serif text-xl">{item.title}</h3>

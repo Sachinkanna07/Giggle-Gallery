@@ -18,6 +18,7 @@ type Props = {
 };
 
 export function ArtworkDetail({ artwork, liked, saved, reason, onClose, onLike, onSave, onCart, onArtist }: Props) {
+  const available = artwork?.availability === "AVAILABLE" && (artwork.stock ?? 0) > 0;
   return (
     <Dialog open={Boolean(artwork)} onOpenChange={(open) => !open && onClose()}>
       {artwork && (
@@ -50,10 +51,10 @@ export function ArtworkDetail({ artwork, liked, saved, reason, onClose, onLike, 
 
             <div className="mt-auto pt-7">
               <div className="mb-5 flex items-end justify-between"><span className="text-sm text-white/45">Archival, signed edition</span><strong className="font-serif text-3xl font-normal">{formatPrice(artwork.price)}</strong></div>
-              <button onClick={onCart} className="flex w-full items-center justify-center gap-3 rounded-full bg-ivory px-5 py-4 text-sm font-semibold text-ink transition hover:bg-cobalt-light"><ShoppingBag size={17} /> Add to cart</button>
+              <button disabled={!available} onClick={onCart} className="flex w-full items-center justify-center gap-3 rounded-full bg-ivory px-5 py-4 text-sm font-semibold text-ink transition hover:bg-cobalt-light disabled:cursor-not-allowed disabled:opacity-40"><ShoppingBag size={17} /> {available ? "Add to cart" : "Unavailable"}</button>
               <div className="mt-3 grid grid-cols-3 gap-2">
-                <button onClick={onLike} className={`flex items-center justify-center gap-2 rounded-full border px-3 py-3 text-sm transition ${liked ? "border-cobalt-light bg-cobalt/20" : "border-white/15 hover:border-white/40"}`}><Heart size={16} fill={liked ? "currentColor" : "none"} /> Like</button>
-                <button onClick={onSave} className={`flex items-center justify-center gap-2 rounded-full border px-3 py-3 text-sm transition ${saved ? "border-white bg-white text-black" : "border-white/15 hover:border-white/40"}`}><Plus size={16} /> Save</button>
+                <button aria-pressed={liked} onClick={onLike} className={`flex items-center justify-center gap-2 rounded-full border px-3 py-3 text-sm transition ${liked ? "border-cobalt-light bg-cobalt/20" : "border-white/15 hover:border-white/40"}`}><Heart size={16} fill={liked ? "currentColor" : "none"} /> {liked ? "Liked" : "Like"}</button>
+                <button aria-pressed={saved} onClick={onSave} className={`flex items-center justify-center gap-2 rounded-full border px-3 py-3 text-sm transition ${saved ? "border-white bg-white text-black" : "border-white/15 hover:border-white/40"}`}><Plus size={16} /> {saved ? "Saved" : "Save"}</button>
                 <button onClick={() => navigator.clipboard?.writeText(window.location.href)} className="flex items-center justify-center gap-2 rounded-full border border-white/15 px-3 py-3 text-sm transition hover:border-white/40"><Share2 size={16} /> Share</button>
               </div>
             </div>

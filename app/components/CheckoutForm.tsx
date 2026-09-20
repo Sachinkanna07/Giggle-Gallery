@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { beginCheckout } from "@/app/actions/checkout";
 
 declare global {
@@ -22,6 +23,7 @@ async function loadRazorpay() {
 }
 
 export function CheckoutForm() {
+  const router = useRouter();
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
   function submit(formData: FormData) {
@@ -42,8 +44,11 @@ export function CheckoutForm() {
         theme: { color: "#2757ff" },
         handler: async (response: Record<string, string>) => {
           const verification = await fetch("/api/payments/razorpay/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...response, internalOrderId: result.internalOrderId }) });
-          if (verification.ok) window.location.href = `/checkout/success?order=${result.internalOrderId}`;
+          if (verification.ok) router.push(`/checkout/success?order=${result.internalOrderId}`);
           else setError("Payment was received but verification is still pending. Check My Orders shortly.");
+        },
+        modal: {
+          ondismiss: () => setError("Payment window closed. Your purchase was not confirmed."),
         },
       });
       checkout.on("payment.failed", (response) => setError(response.error?.description ?? "Payment failed. No order was confirmed."));
