@@ -109,12 +109,17 @@ export async function setCartQuantity(artworkId: string, quantity: number): Prom
     const nextQuantity = z.number().int().min(0).max(99).parse(quantity);
     const user = await requireUser();
     const db = getDb();
+    const cartId = await getOrCreateCart(user.id);
+    if (nextQuantity === 0) {
+      await db.delete(cartItems).where(and(eq(cartItems.cartId, cartId), eq(cartItems.artworkId, id)));
+      revalidatePath("/");
+      revalidatePath("/checkout");
+      return { ok: true, quantity: 0 };
+    }
     const [artwork] = await db.select({ stock: artworks.stock, availability: artworks.availability, status: artworks.status }).from(artworks).where(eq(artworks.id, id)).limit(1);
     if (!artwork || artwork.status !== "PUBLISHED" || artwork.availability !== "AVAILABLE") return { ok: false, error: "This artwork is no longer available." };
     if (nextQuantity > artwork.stock) return { ok: false, error: `Only ${artwork.stock} available.` };
-    const cartId = await getOrCreateCart(user.id);
-    if (nextQuantity === 0) await db.delete(cartItems).where(and(eq(cartItems.cartId, cartId), eq(cartItems.artworkId, id)));
-    else await db.insert(cartItems).values({ cartId, artworkId: id, quantity: nextQuantity }).onConflictDoUpdate({ target: [cartItems.cartId, cartItems.artworkId], set: { quantity: nextQuantity, updatedAt: new Date() } });
+    await db.insert(cartItems).values({ cartId, artworkId: id, quantity: nextQuantity }).onConflictDoUpdate({ target: [cartItems.cartId, cartItems.artworkId], set: { quantity: nextQuantity, updatedAt: new Date() } });
     revalidatePath("/");
     revalidatePath("/checkout");
     return { ok: true, quantity: nextQuantity };

@@ -42,11 +42,26 @@ export type ArtistSummary = {
   rating: number;
 };
 
+export type CartItemDetail = {
+  artworkId: string;
+  quantity: number;
+  title: string;
+  artist: string;
+  price: number;
+  image: string;
+  type: "DIGITAL" | "PHYSICAL";
+  stock: number;
+  availability: string;
+  status: string;
+  isAvailable: boolean;
+  unavailableReason?: string;
+};
+
 export type ViewerState = {
   likedIds: string[];
   savedIds: string[];
   followedArtistIds: string[];
-  cart: Array<{ artworkId: string; quantity: number }>;
+  cart: CartItemDetail[];
   preferences: string[];
   collections: Array<{ id: string; name: string; artworkIds: string[] }>;
   recentSearches: string[];
@@ -185,15 +200,71 @@ export async function getMarketplaceCatalog(): Promise<MarketplaceCatalog> {
 export async function getViewerState(userId?: string): Promise<ViewerState> {
   if (!userId || !hasDatabase()) return emptyViewer;
   const db = getDb();
-  const [liked, saved, followed, cartRows, taste, ownedCollections, searches] = await Promise.all([
+  const [liked, saved, followed, rawCartRows, taste, ownedCollections, searches] = await Promise.all([
     db.select({ artworkId: likes.artworkId }).from(likes).where(eq(likes.userId, userId)),
     db.select({ artworkId: savedArtworks.artworkId }).from(savedArtworks).where(eq(savedArtworks.userId, userId)),
     db.select({ artistId: follows.artistId }).from(follows).where(eq(follows.followerId, userId)),
-    db.select({ artworkId: cartItems.artworkId, quantity: cartItems.quantity }).from(carts).innerJoin(cartItems, eq(carts.id, cartItems.cartId)).where(eq(carts.userId, userId)),
+    db
+      .select({
+        artworkId: cartItems.artworkId,
+        quantity: cartItems.quantity,
+        title: artworkTable.title,
+        artist: artistProfiles.displayName,
+        price: artworkTable.price,
+        currency: artworkTable.currency,
+        stock: artworkTable.stock,
+        availability: artworkTable.availability,
+        status: artworkTable.status,
+        type: artworkTable.type,
+      })
+      .from(carts)
+      .innerJoin(cartItems, eq(carts.id, cartItems.cartId))
+      .leftJoin(artworkTable, eq(cartItems.artworkId, artworkTable.id))
+      .leftJoin(artistProfiles, eq(artworkTable.artistId, artistProfiles.id))
+      .where(eq(carts.userId, userId)),
     db.select().from(userTasteProfiles).where(eq(userTasteProfiles.userId, userId)).limit(1),
     db.select({ id: collections.id, name: collections.name, artworkId: collectionItems.artworkId }).from(collections).leftJoin(collectionItems, eq(collections.id, collectionItems.collectionId)).where(eq(collections.userId, userId)).orderBy(desc(collections.createdAt)),
     db.select({ query: searchHistory.query }).from(searchHistory).where(eq(searchHistory.userId, userId)).orderBy(desc(searchHistory.createdAt)).limit(8),
   ]);
+
+  const cartArtworkIds = rawCartRows.map((row) => row.artworkId);
+  const cartImages = cartArtworkIds.length
+    ? await db.select({ artworkId: artworkImages.artworkId, url: artworkImages.url }).from(artworkImages).where(inArray(artworkImages.artworkId, cartArtworkIds)).orderBy(artworkImages.sortOrder)
+    : [];
+  const cartImageMap = new Map<string, string>();
+  cartImages.forEach((img) => { if (!cartImageMap.has(img.artworkId)) cartImageMap.set(img.artworkId, img.url); });
+
+  const cart: CartItemDetail[] = rawCartRows.map((row) => {
+    const isPublished = row.status === "PUBLISHED";
+    const isAvailableStatus = row.availability === "AVAILABLE";
+    const hasStock = (row.stock ?? 0) >= row.quantity && row.quantity >= 1;
+    const isAvailable = isPublished && isAvailableStatus && hasStock;
+
+    let unavailableReason: string | undefined;
+    if (!row.title || !isPublished) {
+      unavailableReason = "This artwork is no longer listed in the gallery.";
+    } else if (!isAvailableStatus || (row.stock ?? 0) === 0) {
+      unavailableReason = "This artwork is sold out.";
+    } else if (row.quantity > (row.stock ?? 0)) {
+      unavailableReason = `Only ${row.stock} left in stock.`;
+    }
+
+    return {
+      artworkId: row.artworkId,
+      quantity: row.quantity,
+      title: row.title ?? "Unavailable Artwork",
+      artist: row.artist ?? "Unknown Artist",
+      price: Number(row.price ?? 0),
+      image: cartImageMap.get(row.artworkId) ?? "/midnight-tide.png",
+      type: row.type ?? "PHYSICAL",
+      stock: row.stock ?? 0,
+      availability: row.availability ?? "SOLD_OUT",
+      status: row.status ?? "REJECTED",
+      isAvailable,
+      unavailableReason,
+    };
+  });
+
   const collectionMap = new Map<string, { id: string; name: string; artworkIds: string[] }>();
   ownedCollections.forEach((row) => {
     const value = collectionMap.get(row.id) ?? { id: row.id, name: row.name, artworkIds: [] };
@@ -205,7 +276,7 @@ export async function getViewerState(userId?: string): Promise<ViewerState> {
     likedIds: liked.map((row) => row.artworkId),
     savedIds: saved.map((row) => row.artworkId),
     followedArtistIds: followed.map((row) => row.artistId),
-    cart: cartRows,
+    cart,
     preferences: Object.entries(signals).sort((a, b) => b[1] - a[1]).map(([name]) => name).slice(0, 6),
     collections: [...collectionMap.values()],
     recentSearches: [...new Set(searches.map((row) => row.query))].slice(0, 5),

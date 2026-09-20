@@ -7,7 +7,7 @@ import { ArrowDown, ArrowRight, ArrowUpRight, Heart, Home, Search, ShoppingBag, 
 import { toast, Toaster } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { clearCart as clearCartAction, recordArtworkView, saveTasteProfile, setCartQuantity, toggleFollow as toggleFollowAction, toggleLike as toggleLikeAction, toggleSave as toggleSaveAction } from "@/app/actions/marketplace";
-import type { ArtistSummary, ViewerState } from "@/lib/marketplace-data";
+import type { ArtistSummary, CartItemDetail, ViewerState } from "@/lib/marketplace-data";
 import { ArtworkCard } from "./ArtworkCard";
 import { ArtworkDetail } from "./ArtworkDetail";
 import { ArtistDialog } from "./ArtistDialog";
@@ -18,6 +18,23 @@ import { Artwork, moods, recommendationReason, styles } from "../data";
 
 const moodColors: Record<string, string> = { Joyful: "#c15b48", Calm: "#2757ff", Energetic: "#a83b31", Mysterious: "#5b45a9", Dreamy: "#446f98", Dark: "#202636", Peaceful: "#1f6d66", Bold: "#b27932" };
 const moodSymbols: Record<string, string> = { Joyful: "◉", Calm: "≈", Energetic: "↯", Mysterious: "◐", Dreamy: "✦", Dark: "●", Peaceful: "⌁", Bold: "▲" };
+
+function artworkToCartDetail(artwork: Artwork): CartItemDetail {
+  return {
+    artworkId: artwork.id,
+    quantity: 1,
+    title: artwork.title,
+    artist: artwork.artist,
+    price: artwork.price,
+    image: artwork.image,
+    type: artwork.type ?? "PHYSICAL",
+    stock: artwork.stock ?? 1,
+    availability: artwork.availability ?? "AVAILABLE",
+    status: "PUBLISHED",
+    isAvailable: artwork.availability === "AVAILABLE" && (artwork.stock ?? 1) >= 1,
+    unavailableReason: artwork.availability !== "AVAILABLE" ? "Artwork is sold out." : undefined,
+  };
+}
 
 type Props = {
   initialArtworks: Artwork[];
@@ -130,7 +147,7 @@ export function GalleryExperience({ initialArtworks, artists, viewer, user, data
           const id = typeof input === "object" && input && "artworkId" in input ? String((input as { artworkId: unknown }).artworkId) : "";
           const artwork = initialArtworks.find((item) => item.id === id);
           if (!artwork) throw new Error("Artwork not found.");
-          startTransition(async () => { const result = await setCartQuantity(id, 1); if (result.ok) setCart((current) => current.some((item) => item.artworkId === id) ? current : [...current, { artworkId: id, quantity: 1 }]); });
+          startTransition(async () => { const result = await setCartQuantity(id, 1); if (result.ok) setCart((current) => current.some((item) => item.artworkId === id) ? current : [...current, artworkToCartDetail(artwork)]); });
           setCartOpen(true);
           return { status: "requested", artworkId: id };
         },
@@ -162,7 +179,7 @@ export function GalleryExperience({ initialArtworks, artists, viewer, user, data
   function addCart(artwork: Artwork) {
     if (!requireAccount()) return;
     if (!cart.some((item) => item.artworkId === artwork.id)) {
-      setCart((current) => [...current, { artworkId: artwork.id, quantity: 1 }]);
+      setCart((current) => [...current, artworkToCartDetail(artwork)]);
       startTransition(async () => { const result = await setCartQuantity(artwork.id, 1); if (!result.ok) { setCart((current) => current.filter((item) => item.artworkId !== artwork.id)); toast.error(result.error); } });
       toast.success(`${artwork.title} added to your cart`);
     } else toast("That artwork is already in your cart");
@@ -179,7 +196,22 @@ export function GalleryExperience({ initialArtworks, artists, viewer, user, data
 
   const filtered = results;
   const detailReason = detail ? recommendationReason(detail, preferences) : "";
-  const cartItems = cart.map((entry) => ({ artwork: initialArtworks.find((artwork) => artwork.id === entry.artworkId), quantity: entry.quantity })).filter((entry) => entry.artwork) as Array<{ artwork: Artwork; quantity: number }>;
+  const cartItems = cart.map((entry) => {
+    const catalogMatch = initialArtworks.find((artwork) => artwork.id === entry.artworkId);
+    const stock = catalogMatch?.stock ?? entry.stock ?? 1;
+    return {
+      artworkId: entry.artworkId,
+      title: catalogMatch?.title ?? entry.title ?? "Artwork",
+      artist: catalogMatch?.artist ?? entry.artist ?? "Artist",
+      price: catalogMatch?.price ?? entry.price ?? 0,
+      image: catalogMatch?.image ?? entry.image ?? "/midnight-tide.png",
+      type: (catalogMatch?.type ?? entry.type ?? "PHYSICAL") as "DIGITAL" | "PHYSICAL",
+      stock,
+      quantity: entry.quantity,
+      isAvailable: entry.isAvailable ?? (catalogMatch ? catalogMatch.availability === "AVAILABLE" && stock >= entry.quantity : false),
+      unavailableReason: entry.unavailableReason ?? (catalogMatch ? (catalogMatch.availability !== "AVAILABLE" ? "Artwork is sold out." : undefined) : "This artwork is no longer listed in the gallery."),
+    };
+  });
   const savedItems = saved.map((id) => initialArtworks.find((artwork) => artwork.id === id)).filter(Boolean) as Artwork[];
   const activeArtist = artists.find((artist) => artist.id === artistId);
 
