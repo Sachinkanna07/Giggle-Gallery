@@ -2,14 +2,16 @@
 
 Replace bracketed placeholders before use. Each prompt is deliberately narrow: inspect first, preserve server-owned security boundaries, validate locally, and distinguish local proof from production proof.
 
+Current handoff: discovery filters, public artist profiles, persisted favorites, seller order fulfillment, buyer order polish, read-only admin oversight, mobile navigation, SEO, and accessibility improvements are implemented. Run the no-payment manual QA in `docs/GIGGLE_GALLERY_MVP_STATUS.md` before using prompt 1. Auctions remain post-MVP design work only.
+
 ## 1. ₹1 paid-flow test
 
 ```text
-Objective: Verify one complete Razorpay test-mode payment using a dedicated ₹1 artwork.
+Objective: After the no-payment manual QA is approved, verify one complete Razorpay test-mode payment using the existing dedicated ₹1 artwork.
 Repo/context: [REPO], [PRODUCTION_OR_PREVIEW_URL], [VERCEL_PROJECT].
 Inspect first: status/log, MVP status doc, checkout creation, verification, webhook, finalization transaction, buyer orders, seller reporting, and provider mode.
-Do: create/review/publish the test artwork through normal UI; record non-secret evidence for order, payment, webhook, stock, seller revenue, and payout; test one duplicate webhook.
-Don't: use live money, pay for qwsedregthywrteyrut, edit DB rows, expose provider IDs/secrets in git, or claim success from checkout opening alone.
+Do: confirm `GG Paid Flow Test ₹1` is the only cart item at quantity 1; have the human complete payment; record non-secret evidence for order, payment, webhook, stock, seller revenue, and payout; test one duplicate webhook.
+Don't: start before manual QA approval, use live money or real financial credentials, pay for qwsedregthywrteyrut, edit DB rows, expose provider IDs/secrets in git, or claim success from checkout opening alone.
 Security: keep server pricing, signatures, buyer ownership, idempotency, and conditional stock decrement unchanged.
 Tests: add/update only if a reproducible code defect is found; cover its negative boundary.
 Validation: npm run lint; npm run typecheck; npm test; npm run build; git diff --check; npm audit.

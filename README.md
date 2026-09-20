@@ -2,6 +2,25 @@
 
 Giggle Gallery is a cinematic art marketplace built with Next.js, Auth.js, Drizzle ORM, Neon Postgres, Vercel Blob, and Razorpay. Production workflows are persisted and server-authorized; the development-only catalog fallback is never presented as production data.
 
+## Marketplace features
+
+- Published-only catalog with title/artist search, medium, format, color, availability, year, and price filters; filter state is shareable by URL.
+- Public artwork and artist pages with metadata, responsive images, safe public profile fields, and published work counts.
+- Authenticated favorites, private collections, persistent cart, server-priced checkout, and buyer-owned order history.
+- Seller application, guarded artwork upload, pending review, inventory, paid-only revenue, seller-owned paid orders, and forward-only fulfillment updates.
+- Admin seller/artwork moderation plus read-only order, payment, and fulfillment oversight. Admin tools cannot mark an unpaid order paid.
+- Razorpay signature/webhook verification, duplicate-event protection, transactional stock updates, payout records, and inventory-conflict refunds.
+
+## Roles
+
+- **Buyer:** save artwork, manage private collections and cart, check out, and view only their own orders.
+- **Seller:** all buyer capabilities plus submit artwork, view moderation status, see only their paid order items and fulfillment data, and advance valid fulfillment steps.
+- **Admin:** review sellers and artwork, unpublish safely, and inspect marketplace/order status. Payment truth remains provider-verified.
+
+## Architecture
+
+Next.js App Router renders the public and authenticated experiences. Auth.js establishes identity while server actions and route handlers re-check active account and role state. Drizzle accesses Neon PostgreSQL for marketplace state. Vercel Blob client uploads use short-lived seller-owned intents. Razorpay creates provider orders and reports signed browser/webhook events; one transactional finalizer owns payment, inventory, payout, cart, and notification mutations. Resend is used for separately verified contact-email delivery.
+
 ## Local development
 
 1. Install Node.js 22.13 or newer and run `npm install`.
@@ -100,7 +119,15 @@ Payment finalization updates payment, attempt, order, inventory, payouts, cart, 
 - Auth POSTs, email verification, upload authorization, payment verification, webhooks, and authenticated Server Actions have initial rate limits.
 - The limiter is per-process and best-effort. Replace it with a shared durable limiter before horizontal scale or adversarial traffic.
 - The web manifest is the PWA foundation. Offline caching, install UX, and a full service-worker strategy are later-phase work.
-- Artwork moderation, SMS delivery, receipts/certificates, shipping/refund operations, and payout execution remain later phases.
+- Carrier tracking, returns/refund operations, payout execution, durable distributed rate limiting, SMS delivery, and receipts/certificates remain later phases.
+
+## Known MVP limitations
+
+- The final dedicated ₹1 Razorpay test-mode payment has not yet been completed by a human, so deployed paid-flow behavior remains unverified end to end.
+- Fulfillment supports forward order states but not carrier/tracking fields; mixed-seller orders cannot be advanced by one seller while status remains order-level.
+- Admin order oversight is intentionally read-only and limited to recent status data; reconciliation and refund tooling are deferred.
+- Search is appropriate for the current MVP catalog but still loads the published catalog before in-memory filtering; database-native search/pagination is future scale work.
+- Abandoned checkout orders are retained for history; automatic expiry/cleanup is not implemented.
 
 ## Deployment checklist
 

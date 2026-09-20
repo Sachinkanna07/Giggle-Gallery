@@ -1,7 +1,7 @@
 # Giggle Gallery Feature Roadmap
 
-Last reviewed: 2026-09-19
-Baseline: `99bc094`
+Last reviewed: 2026-09-20
+Code baseline before documentation: `f85f340`
 Production: https://giggle-gallery-pi.vercel.app
 
 ## Product direction
@@ -57,9 +57,9 @@ Model guidance: **Codex** for bounded implementation and tests; **Claude Sonnet*
 
 | Feature | Status | Priority | Risk | DB migration | Manual production test | Model | Build prompt |
 |---|---|---:|---:|---:|---:|---|---|
-| Natural query, category/style/mood/medium/artist/price filters | PARTIAL | P1 | Medium | No | Yes | Codex | Search/filters |
-| Sorting by relevance, trend, recency, popularity, and price | PARTIAL | P1 | Low | No | Yes | Codex | Search/filters |
-| URL-persisted filters and useful zero-results recovery | PARTIAL | P1 | Low | No | Yes | Claude Sonnet | Search/filters |
+| Natural query, category/style/mood/medium/format/color/artist/price filters | READY | P1 | Medium | No | Yes | Codex | Final launch checklist |
+| Sorting by relevance, trend, recency, popularity, and price | READY | P1 | Low | No | Yes | Codex | Final launch checklist |
+| URL-persisted filters and useful zero-results recovery | READY | P1 | Low | No | Yes | Claude Sonnet | Final launch checklist |
 | Database-backed scalable search | MISSING | P2 | Medium | Maybe | Yes | Codex | Search scaling |
 | Personalized recommendations and alerts | MISSING | P2 | Medium | Yes | Yes | GPT review | Notifications |
 
@@ -68,7 +68,7 @@ Model guidance: **Codex** for bounded implementation and tests; **Claude Sonnet*
 | Feature | Status | Priority | Risk | DB migration | Manual production test | Model | Build prompt |
 |---|---|---:|---:|---:|---:|---|---|
 | Public artist route, bio, location, discipline, works | READY | P1 | Low | No | Yes | Codex | Public artist profile |
-| Follow count, rating, and published works integrity | PARTIAL | P1 | Medium | No | Yes | Codex | Public artist profile |
+| Follow count, rating, joined date, and published works integrity | READY | P1 | Medium | No | Yes | Codex | Final launch checklist |
 | Seller-managed profile, links, portrait, statement | PARTIAL | P1 | Medium | Maybe | Yes | Claude Sonnet | Public artist profile |
 | Exhibitions, credentials, press, authenticity narrative | MISSING | P2 | Medium | Yes | Yes | Claude Sonnet | Artist profile enrichment |
 
@@ -84,8 +84,8 @@ Model guidance: **Codex** for bounded implementation and tests; **Claude Sonnet*
 
 | Feature | Status | Priority | Risk | DB migration | Manual production test | Model | Build prompt |
 |---|---|---:|---:|---:|---:|---|---|
-| Order status display | PARTIAL | P1 | Medium | No | Yes | Codex | Seller order management |
-| Seller dispatch, carrier/tracking, buyer delivery view | MISSING | P2 | High | Yes | Yes | Codex | Shipping |
+| Paid seller order view and forward fulfillment states | READY | P1 | Medium | No | Yes | Codex | Final launch checklist |
+| Carrier/tracking and per-item mixed-seller fulfillment | MISSING | P2 | High | Yes | Yes | Codex | Shipping |
 | Address validation, shipping quote, taxes/duties policy | PARTIAL | P2 | High | Maybe | Yes | GPT review | Shipping |
 | Returns, damage claims, proof, refund handoff | MISSING | Future | High | Yes | Yes | GPT review | Returns design |
 
@@ -102,7 +102,7 @@ Model guidance: **Codex** for bounded implementation and tests; **Claude Sonnet*
 | Feature | Status | Priority | Risk | DB migration | Manual production test | Model | Build prompt |
 |---|---|---:|---:|---:|---:|---|---|
 | Seller application and artwork moderation | READY | P0 | High | No | Yes | Codex | Final launch checklist |
-| Admin order/payment oversight and safe filters | MISSING | P1 | High | No | Yes | Codex | Admin order management |
+| Read-only recent order/payment/fulfillment oversight | READY | P1 | High | No | Yes | Codex | Final launch checklist |
 | User/account moderation and audit trail | MISSING | P2 | High | Yes | Yes | GPT review | Admin trust operations |
 | Refund/reconciliation queue | MISSING | Future | High | Yes | Yes | GPT review | Refund operations design |
 
@@ -110,7 +110,7 @@ Model guidance: **Codex** for bounded implementation and tests; **Claude Sonnet*
 
 | Feature | Status | Priority | Risk | DB migration | Manual production test | Model | Build prompt |
 |---|---|---:|---:|---:|---:|---|---|
-| Seller revenue, paid sales, views, top artworks | PARTIAL | P2 | Medium | No | Yes | Codex | Seller analytics |
+| Seller revenue, paid sales, status counts, views, top artworks | READY | P2 | Medium | No | Yes | Codex | Final launch checklist |
 | Real time-series analytics and conversion funnel | MISSING | P2 | Medium | Yes | Yes | Codex | Seller analytics |
 | Admin GMV, conversion, moderation, failure metrics | MISSING | P2 | Medium | Yes | Yes | GPT review | Admin analytics |
 | Privacy-aware product analytics | MISSING | P2 | Medium | Maybe | Yes | GPT review | Product analytics design |
@@ -149,18 +149,19 @@ Model guidance: **Codex** for bounded implementation and tests; **Claude Sonnet*
 
 ### P0 — prove and present the current MVP
 
-1. Run the controlled ₹1 Razorpay test-mode paid flow.
-2. Preserve evidence, then clean up the public face-image test artwork through an approved workflow.
-3. Complete the final launch checklist, including monitoring and rollback evidence.
-4. Produce a truthful README/portfolio case study using verified outcomes only.
+1. Complete the no-payment public, buyer, seller, admin, and mobile manual QA checklist.
+2. Run the controlled ₹1 Razorpay test-mode paid flow only after QA approval.
+3. Preserve evidence, then clean up the public face-image test artwork through an approved workflow.
+4. Complete the operational launch checklist, including monitoring, backup, reconciliation, and rollback evidence.
+5. Keep the README and portfolio case study aligned with verified outcomes only.
 
 ### P1 — make everyday marketplace operation complete
 
-1. Search/filter URL state and zero-result UX.
-2. Public and seller-editable artist profile polish.
-3. Seller fulfillment/order management.
-4. Admin order/payment oversight.
-5. Wishlist/collection workflow polish.
+1. Database-native catalog search and pagination when catalog scale requires it.
+2. Seller-editable artist profile fields with safe URL/image validation.
+3. Per-item mixed-seller fulfillment plus carrier/tracking support.
+4. Paginated admin order detail and reconciliation flags.
+5. Collection move/share workflows after an explicit privacy design.
 
 ### P2 — improve conversion and retention
 
