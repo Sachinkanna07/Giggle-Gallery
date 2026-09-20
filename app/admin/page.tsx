@@ -1,11 +1,11 @@
-import { desc, eq } from "drizzle-orm";
+import { count, desc, eq } from "drizzle-orm";
 import Image from "next/image";
 import { auth } from "@/auth";
 import { GalleryShell } from "@/app/components/GalleryShell";
 import { reviewSellerApplicationForm, reviewArtworkForm, unpublishArtworkForm } from "@/app/actions/marketplace";
 import { formatPrice } from "@/app/data";
 import { getDb } from "@/db";
-import { artistApplications, artistProfiles, artworks, artworkImages } from "@/db/schema";
+import { artistApplications, artistProfiles, artworks, artworkImages, orders, users } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +14,7 @@ export default async function AdminPage() {
   if (session?.user?.role !== "ADMIN") return null;
 
   const db = getDb();
-  const [applications, pendingRows, publishedRows] = await Promise.all([
+  const [applications, pendingRows, publishedRows, userCountRows, publishedCountRows, rejectedCountRows, recentOrders] = await Promise.all([
     db.select().from(artistApplications).orderBy(desc(artistApplications.createdAt)),
     db
       .select({
@@ -54,6 +54,10 @@ export default async function AdminPage() {
       .leftJoin(artworkImages, eq(artworks.id, artworkImages.artworkId))
       .where(eq(artworks.status, "PUBLISHED"))
       .orderBy(desc(artworks.publishedAt)),
+    db.select({ value: count() }).from(users),
+    db.select({ value: count() }).from(artworks).where(eq(artworks.status, "PUBLISHED")),
+    db.select({ value: count() }).from(artworks).where(eq(artworks.status, "REJECTED")),
+    db.select({ id: orders.id, orderNumber: orders.orderNumber, total: orders.total, paymentStatus: orders.paymentStatus, status: orders.status, createdAt: orders.createdAt }).from(orders).orderBy(desc(orders.createdAt)).limit(25),
   ]);
 
   // Deduplicate — one row per artwork (leftJoin may repeat for multi-image artworks)
@@ -75,6 +79,10 @@ export default async function AdminPage() {
       <main className="section-shell py-16 lg:py-24">
         <p className="eyebrow">Protected administration</p>
         <h1 className="section-title mt-6">Admin <i>review.</i></h1>
+
+        <section aria-label="Marketplace overview" className="mt-12 grid gap-px bg-white/10 sm:grid-cols-2 lg:grid-cols-4">
+          {[["Users", Number(userCountRows[0]?.value ?? 0)], ["Published artworks", Number(publishedCountRows[0]?.value ?? 0)], ["Rejected artworks", Number(rejectedCountRows[0]?.value ?? 0)], ["Recent orders", recentOrders.length]].map(([label, value]) => <div key={String(label)} className="bg-ink p-6"><p className="text-sm text-white/40">{label}</p><p className="mt-2 font-serif text-4xl">{value}</p></div>)}
+        </section>
 
         {/* ── Artwork Review ────────────────────────────────────────────── */}
         <section id="artwork-review" className="mt-16">
@@ -158,6 +166,46 @@ export default async function AdminPage() {
               </article>
             ))}
             {!publishedArtworks.length && <p className="border border-white/10 p-12 text-center text-white/45">No published artworks found.</p>}
+          </div>
+        </section>
+
+        <section id="orders" className="mt-20">
+          <h2 className="font-serif text-4xl">Order <i>oversight</i></h2>
+          <p className="mt-2 text-sm text-white/45">
+            Read-only payment and fulfillment status for the 25 most recent orders.
+          </p>
+          <div className="mt-8 overflow-x-auto border border-white/10">
+            <table className="w-full min-w-[720px] text-left text-sm">
+              <thead className="border-b border-white/10 text-xs uppercase tracking-[0.16em] text-white/40">
+                <tr>
+                  <th className="px-5 py-4 font-medium">Order</th>
+                  <th className="px-5 py-4 font-medium">Total</th>
+                  <th className="px-5 py-4 font-medium">Payment</th>
+                  <th className="px-5 py-4 font-medium">Fulfillment</th>
+                  <th className="px-5 py-4 font-medium">Created</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/10">
+                {recentOrders.map((order) => (
+                  <tr key={order.id}>
+                    <td className="px-5 py-4 font-medium">{order.orderNumber}</td>
+                    <td className="px-5 py-4">{formatPrice(Number(order.total))}</td>
+                    <td className="px-5 py-4">{order.paymentStatus}</td>
+                    <td className="px-5 py-4">{order.status}</td>
+                    <td className="px-5 py-4 text-white/55">
+                      {new Date(order.createdAt).toLocaleDateString("en-IN", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!recentOrders.length && (
+              <p className="p-10 text-center text-white/45">No orders found.</p>
+            )}
           </div>
         </section>
 

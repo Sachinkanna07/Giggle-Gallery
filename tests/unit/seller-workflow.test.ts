@@ -21,7 +21,7 @@ vi.mock("@/lib/blob-validation", () => ({
   isApprovedArtworkBlobUrl: (url: string, pathname: string) => url.includes(pathname),
 }));
 
-import { createArtwork, reviewArtwork, reviewSellerApplication, submitSellerApplication, unpublishArtwork } from "../../app/actions/marketplace";
+import { createArtwork, reviewArtwork, reviewSellerApplication, submitSellerApplication, unpublishArtwork, updateSellerOrderStatus } from "../../app/actions/marketplace";
 
 const activeUser = { id: "user-123", role: "USER" };
 const activeSeller = { id: "seller-456", role: "SELLER" };
@@ -454,6 +454,105 @@ describe("Admin Artwork Review", () => {
     const { tx } = artworkReviewDatabase({ id: ARTWORK_UUID, status: "PENDING_REVIEW" });
     const result = await unpublishArtwork(ARTWORK_UUID);
     expect(result).toEqual({ ok: false, message: "Only published artworks can be unpublished." });
+    expect(tx.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("Seller order fulfillment", () => {
+  const ORDER_UUID = "b1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d";
+
+  function fulfillmentDatabase(
+    order: { status: string; paymentStatus: string } | null,
+    itemArtistIds: string[],
+  ) {
+    const updateWhere = vi.fn().mockResolvedValue(undefined);
+    const updateSet = vi.fn().mockReturnValue({ where: updateWhere });
+    const tx = {
+      select: vi
+        .fn()
+        .mockReturnValueOnce({
+          from: () => ({ where: () => ({ limit: () => Promise.resolve([{ id: "artist-owned" }]) }) }),
+        })
+        .mockReturnValueOnce({
+          from: () => ({
+            where: () => ({
+              limit: () => ({ for: () => Promise.resolve(order ? [order] : []) }),
+            }),
+          }),
+        })
+        .mockReturnValueOnce({
+          from: () => ({ where: () => Promise.resolve(itemArtistIds.map((artistId) => ({ artistId }))) }),
+        }),
+      update: vi.fn().mockReturnValue({ set: updateSet }),
+    };
+    mocks.getDb.mockReturnValue({
+      transaction: vi.fn(async (callback: (value: typeof tx) => Promise<unknown>) => callback(tx)),
+    });
+    return { tx, updateSet, updateWhere };
+  }
+
+  it("blocks users without seller access", async () => {
+    mocks.requireSeller.mockRejectedValue(new Error("SELLER_REQUIRED"));
+
+    const result = await updateSellerOrderStatus(ORDER_UUID, "PROCESSING");
+
+    expect(result).toEqual({ ok: false, message: "An approved seller account is required." });
+    expect(mocks.getDb).not.toHaveBeenCalled();
+  });
+
+  it("does not let a seller update another or mixed-seller order", async () => {
+    mocks.requireSeller.mockResolvedValue(activeSeller);
+    const { tx } = fulfillmentDatabase(
+      { status: "CONFIRMED", paymentStatus: "PAID" },
+      ["artist-owned", "artist-other"],
+    );
+
+    const result = await updateSellerOrderStatus(ORDER_UUID, "PROCESSING");
+
+    expect(result).toEqual({ ok: false, message: "This order cannot be managed from your seller account." });
+    expect(tx.update).not.toHaveBeenCalled();
+  });
+
+  it("allows only the next fulfillment step on an owned paid order", async () => {
+    mocks.requireSeller.mockResolvedValue(activeSeller);
+    const { updateSet, updateWhere } = fulfillmentDatabase(
+      { status: "CONFIRMED", paymentStatus: "PAID" },
+      ["artist-owned"],
+    );
+
+    const result = await updateSellerOrderStatus(ORDER_UUID, "PROCESSING");
+
+    expect(result).toEqual({ ok: true, message: "Order moved to processing." });
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ status: "PROCESSING" }));
+    expect(updateWhere).toHaveBeenCalledOnce();
+    expect(mocks.revalidate).toHaveBeenCalledWith("/seller");
+    expect(mocks.revalidate).toHaveBeenCalledWith("/orders");
+    expect(mocks.revalidate).toHaveBeenCalledWith("/admin");
+  });
+
+  it("rejects backward or skipped fulfillment changes", async () => {
+    mocks.requireSeller.mockResolvedValue(activeSeller);
+    const { tx } = fulfillmentDatabase(
+      { status: "PROCESSING", paymentStatus: "PAID" },
+      ["artist-owned"],
+    );
+
+    const result = await updateSellerOrderStatus(ORDER_UUID, "DELIVERED");
+
+    expect(result).toEqual({ ok: false, message: "That fulfillment step is not available." });
+    expect(tx.update).not.toHaveBeenCalled();
+  });
+
+  it("never advances an unpaid order", async () => {
+    mocks.requireSeller.mockResolvedValue(activeSeller);
+    const { tx } = fulfillmentDatabase(
+      { status: "PENDING", paymentStatus: "PENDING" },
+      ["artist-owned"],
+    );
+
+    const result = await updateSellerOrderStatus(ORDER_UUID, "PROCESSING");
+
+    expect(result).toEqual({ ok: false, message: "Paid order not found." });
     expect(tx.update).not.toHaveBeenCalled();
   });
 });

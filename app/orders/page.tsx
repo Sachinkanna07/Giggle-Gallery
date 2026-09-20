@@ -26,6 +26,7 @@ export default async function OrdersPage() {
                   <h2 className="mt-3 font-serif text-3xl">{order.title ?? "Artwork"}</h2>
                   <p className="mt-1 text-sm text-white/45">{order.artist} · Quantity {order.quantity ?? 1}</p>
                   <div className="mt-4 flex flex-wrap gap-4 text-xs text-white/50"><span>Payment: {order.paymentStatus}</span><span>Order: {order.status}</span></div>
+                  {order.city && <p className="mt-3 text-sm text-white/45">Delivery destination: {order.city}, {order.state}, {order.country}</p>}
                   {paymentPending ? <p className="mt-3 max-w-xl text-sm text-amber-100/75">Payment is not confirmed. If Razorpay was closed without payment, no purchase was completed.</p> : null}
                   {order.status === "DELIVERED" && order.itemId && <ReviewForm orderItemId={order.itemId} />}
                 </div>

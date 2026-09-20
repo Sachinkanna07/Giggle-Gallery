@@ -431,3 +431,41 @@ export async function unpublishArtwork(artworkId: string): Promise<{ ok: boolean
 export async function unpublishArtworkForm(formData: FormData): Promise<void> {
   await unpublishArtwork(String(formData.get("artworkId") ?? ""));
 }
+
+const fulfillmentStatus = z.enum(["PROCESSING", "SHIPPED", "DELIVERED"]);
+
+export async function updateSellerOrderStatus(orderId: string, nextStatus: "PROCESSING" | "SHIPPED" | "DELIVERED"): Promise<{ ok: boolean; message: string }> {
+  try {
+    const seller = await requireSeller();
+    const id = idSchema.parse(orderId);
+    const next = fulfillmentStatus.parse(nextStatus);
+    const db = getDb();
+    const outcome = await db.transaction(async (tx) => {
+      const [artist] = await tx.select({ id: artistProfiles.id }).from(artistProfiles).where(eq(artistProfiles.userId, seller.id)).limit(1);
+      if (!artist) return "NOT_OWNER" as const;
+      const [order] = await tx.select({ status: orders.status, paymentStatus: orders.paymentStatus }).from(orders).where(eq(orders.id, id)).limit(1).for("update");
+      if (!order || order.paymentStatus !== "PAID") return "NOT_FOUND" as const;
+      const items = await tx.select({ artistId: orderItems.artistId }).from(orderItems).where(eq(orderItems.orderId, id));
+      if (!items.length || items.some((item) => item.artistId !== artist.id)) return "NOT_OWNER" as const;
+      const allowed: Record<string, string> = { CONFIRMED: "PROCESSING", PROCESSING: "SHIPPED", SHIPPED: "DELIVERED" };
+      if (allowed[order.status] !== next) return "INVALID_TRANSITION" as const;
+      await tx.update(orders).set({ status: next, updatedAt: new Date() }).where(and(eq(orders.id, id), eq(orders.status, order.status)));
+      return "UPDATED" as const;
+    });
+    if (outcome === "NOT_FOUND") return { ok: false, message: "Paid order not found." };
+    if (outcome === "NOT_OWNER") return { ok: false, message: "This order cannot be managed from your seller account." };
+    if (outcome === "INVALID_TRANSITION") return { ok: false, message: "That fulfillment step is not available." };
+    revalidatePath("/seller");
+    revalidatePath("/orders");
+    revalidatePath("/admin");
+    return { ok: true, message: `Order moved to ${next.toLowerCase()}.` };
+  } catch (error) {
+    return { ok: false, message: friendlyError(error) };
+  }
+}
+
+export async function updateSellerOrderStatusForm(formData: FormData): Promise<void> {
+  const next = fulfillmentStatus.safeParse(String(formData.get("status") ?? ""));
+  if (!next.success) return;
+  await updateSellerOrderStatus(String(formData.get("orderId") ?? ""), next.data);
+}
