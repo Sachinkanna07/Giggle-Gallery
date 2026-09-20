@@ -6,6 +6,7 @@ import { isProductionRuntime } from "@/lib/env-schema";
 import {
   artistApplications,
   artistProfiles,
+  addresses,
   artworkImages,
   artworks as artworkTable,
   artworkTags,
@@ -40,6 +41,7 @@ export type ArtistSummary = {
   image: string;
   bio: string;
   rating: number;
+  joinedAt: Date;
 };
 
 export type CartItemDetail = {
@@ -75,7 +77,7 @@ function fallbackCatalog(): MarketplaceCatalog {
   return {
     databaseReady: false,
     artworks: fallbackArtworks.map((artwork) => ({ ...artwork, category: "Limited editions", availability: "AVAILABLE", stock: 1, type: "PHYSICAL" })),
-    artists: fallbackArtists.map((artist) => ({ ...artist, slug: artist.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""), followerCount: Number.parseFloat(artist.followers) * 1000, rating: 4.8 })),
+    artists: fallbackArtists.map((artist) => ({ ...artist, slug: artist.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""), followerCount: Number.parseFloat(artist.followers) * 1000, rating: 4.8, joinedAt: new Date(0) })),
   };
 }
 
@@ -98,6 +100,7 @@ export async function getMarketplaceCatalog(): Promise<MarketplaceCatalog> {
         artistBio: artistProfiles.biography,
         artistImage: artistProfiles.profileImageUrl,
         artistRating: artistProfiles.rating,
+        artistCreatedAt: artistProfiles.createdAt,
         price: artworkTable.price,
         currency: artworkTable.currency,
         medium: artworkTable.medium,
@@ -187,6 +190,7 @@ export async function getMarketplaceCatalog(): Promise<MarketplaceCatalog> {
         image: row.artistImage ?? imageByArtwork.get(row.id)?.url ?? "/blue-thread.png",
         bio: row.artistBio,
         rating: Number(row.artistRating),
+        joinedAt: row.artistCreatedAt,
       });
     });
     return { artworks: mapped, artists: [...artistMap.values()], databaseReady: true };
@@ -296,7 +300,15 @@ export async function getArtistBySlug(slug: string) {
 
 export async function getBuyerOrders(userId: string) {
   if (!hasDatabase()) return [];
-  return getDb().select({ id: orders.id, orderNumber: orders.orderNumber, createdAt: orders.createdAt, total: orders.total, paymentStatus: orders.paymentStatus, status: orders.status, itemId: orderItems.id, artworkId: orderItems.artworkId, title: orderItems.titleSnapshot, artist: orderItems.artistNameSnapshot, quantity: orderItems.quantity, lineTotal: orderItems.lineTotal }).from(orders).leftJoin(orderItems, eq(orders.id, orderItems.orderId)).where(eq(orders.buyerId, userId)).orderBy(desc(orders.createdAt));
+  return getDb().select({ id: orders.id, orderNumber: orders.orderNumber, createdAt: orders.createdAt, total: orders.total, paymentStatus: orders.paymentStatus, status: orders.status, itemId: orderItems.id, artworkId: orderItems.artworkId, title: orderItems.titleSnapshot, artist: orderItems.artistNameSnapshot, quantity: orderItems.quantity, lineTotal: orderItems.lineTotal, city: addresses.city, state: addresses.state, country: addresses.country }).from(orders).leftJoin(orderItems, eq(orders.id, orderItems.orderId)).leftJoin(addresses, eq(orders.addressId, addresses.id)).where(eq(orders.buyerId, userId)).orderBy(desc(orders.createdAt));
+}
+
+export async function getSellerOrders(userId: string) {
+  if (!hasDatabase()) return [];
+  const db = getDb();
+  const [artist] = await db.select({ id: artistProfiles.id }).from(artistProfiles).where(eq(artistProfiles.userId, userId)).limit(1);
+  if (!artist) return [];
+  return db.select({ id: orderItems.id, orderId: orders.id, orderNumber: orders.orderNumber, title: orderItems.titleSnapshot, quantity: orderItems.quantity, amount: orderItems.lineTotal, sellerEarnings: orderItems.sellerEarnings, status: orders.status, paymentStatus: orders.paymentStatus, createdAt: orders.createdAt, fullName: addresses.fullName, phone: addresses.phone, line1: addresses.line1, line2: addresses.line2, city: addresses.city, state: addresses.state, postalCode: addresses.postalCode, country: addresses.country }).from(orderItems).innerJoin(orders, eq(orderItems.orderId, orders.id)).leftJoin(addresses, eq(orders.addressId, addresses.id)).where(and(eq(orderItems.artistId, artist.id), eq(orders.paymentStatus, "PAID"), inArray(orders.status, ["CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED"]))).orderBy(desc(orders.createdAt));
 }
 
 export async function getSellerSnapshot(userId: string) {

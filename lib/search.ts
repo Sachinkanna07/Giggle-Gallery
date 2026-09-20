@@ -6,6 +6,8 @@ export type ArtworkFilters = {
   style?: string;
   mood?: string;
   medium?: string;
+  type?: "DIGITAL" | "PHYSICAL";
+  color?: string;
   artist?: string;
   year?: number;
   availability?: string;
@@ -40,6 +42,8 @@ export function searchArtworks(records: Artwork[], filters: ArtworkFilters) {
     .filter((artwork) => !filters.style || filters.style === "All styles" || artwork.style === filters.style)
     .filter((artwork) => !filters.mood || filters.mood === "All moods" || artwork.mood === filters.mood)
     .filter((artwork) => !filters.medium || filters.medium === "All media" || artwork.medium === filters.medium)
+    .filter((artwork) => !filters.type || artwork.type === filters.type)
+    .filter((artwork) => !filters.color || artwork.colors.some((color) => color.toLowerCase() === filters.color?.toLowerCase()))
     .filter((artwork) => !filters.artist || filters.artist === "All artists" || artwork.artist === filters.artist)
     .filter((artwork) => !filters.year || artwork.year === filters.year)
     .filter((artwork) => !filters.availability || filters.availability === "All availability" || artwork.availability === filters.availability)
@@ -65,4 +69,19 @@ export function searchArtworks(records: Artwork[], filters: ArtworkFilters) {
       default: return b.queryScore - a.queryScore || scoreArtwork(b.artwork, filters.preferences ?? []) - scoreArtwork(a.artwork, filters.preferences ?? []);
     }
   }).map(({ artwork }) => artwork);
+}
+
+const sortValues = ["Recommended", "Trending", "Newest", "Popular", "Price low", "Price high"] as const;
+
+export function normalizeArtworkFilters(input: Record<string, string | undefined>): ArtworkFilters {
+  const text = (key: string, max = 100) => input[key]?.trim().slice(0, max) || undefined;
+  const nonNegative = (key: string) => {
+    const raw = input[key];
+    if (!raw) return undefined;
+    const value = Number(raw);
+    return Number.isFinite(value) && value >= 0 ? value : undefined;
+  };
+  const sort = sortValues.includes(input.sort as (typeof sortValues)[number]) ? input.sort as (typeof sortValues)[number] : "Recommended";
+  const type = input.type === "DIGITAL" || input.type === "PHYSICAL" ? input.type : undefined;
+  return { query: text("q", 200), category: text("category"), style: text("style"), mood: text("mood"), medium: text("medium"), artist: text("artist"), color: text("color", 40), type, year: nonNegative("year"), availability: text("availability", 30), minPrice: nonNegative("minPrice"), maxPrice: nonNegative("maxPrice"), sort };
 }

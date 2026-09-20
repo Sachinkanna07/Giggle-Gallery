@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { ArrowDown, ArrowRight, ArrowUpRight, Heart, Home, Search, ShoppingBag, Sparkles, UserRound } from "lucide-react";
 import { toast, Toaster } from "sonner";
@@ -42,24 +43,28 @@ type Props = {
   viewer: ViewerState;
   user: { name?: string | null; email?: string | null } | null;
   databaseReady: boolean;
+  initialFilters: Record<string, string | undefined>;
 };
 
-export function GalleryExperience({ initialArtworks, artists, viewer, user, databaseReady }: Props) {
+export function GalleryExperience({ initialArtworks, artists, viewer, user, databaseReady, initialFilters }: Props) {
+  const router = useRouter();
   const [liked, setLiked] = useState<string[]>(viewer.likedIds);
   const [saved, setSaved] = useState<string[]>(viewer.savedIds);
   const [cart, setCart] = useState(viewer.cart);
   const [followed, setFollowed] = useState<string[]>(viewer.followedArtistIds);
   const [preferences, setPreferences] = useState<string[]>(viewer.preferences.length ? viewer.preferences : ["Calm", "blue", "Minimalism"]);
-  const [mood, setMood] = useState("All moods");
-  const [style, setStyle] = useState("All styles");
-  const [category, setCategory] = useState("All categories");
-  const [availability, setAvailability] = useState("All availability");
-  const [medium, setMedium] = useState("All media");
-  const [artistFilter, setArtistFilter] = useState("All artists");
-  const [year, setYear] = useState("All years");
-  const [maxPrice, setMaxPrice] = useState("");
-  const [query, setQuery] = useState("");
-  const [sort, setSort] = useState("Recommended");
+  const [mood, setMood] = useState(initialFilters.mood ?? "All moods");
+  const [style, setStyle] = useState(initialFilters.style ?? "All styles");
+  const [category, setCategory] = useState(initialFilters.category ?? "All categories");
+  const [availability, setAvailability] = useState(initialFilters.availability ?? "All availability");
+  const [medium, setMedium] = useState(initialFilters.medium ?? "All media");
+  const [format, setFormat] = useState(initialFilters.type ?? "All formats");
+  const [color, setColor] = useState(initialFilters.color ?? "All colors");
+  const [artistFilter, setArtistFilter] = useState(initialFilters.artist ?? "All artists");
+  const [year, setYear] = useState(initialFilters.year ?? "All years");
+  const [maxPrice, setMaxPrice] = useState(initialFilters.maxPrice ?? "");
+  const [query, setQuery] = useState(initialFilters.q ?? "");
+  const [sort, setSort] = useState(initialFilters.sort ?? "Recommended");
   const [results, setResults] = useState(initialArtworks);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
@@ -69,13 +74,22 @@ export function GalleryExperience({ initialArtworks, artists, viewer, user, data
   const [cartOpen, setCartOpen] = useState(false);
   const [personalized, setPersonalized] = useState(viewer.preferences.length > 0);
   const [, startTransition] = useTransition();
+  useEffect(() => {
+    const params = new URLSearchParams();
+    const values = { q: query, mood, style, category, availability, medium, artist: artistFilter, year, maxPrice, type: format, color, sort };
+    Object.entries(values).forEach(([key, value]) => {
+      if (value && !value.startsWith("All ") && value !== "Recommended") params.set(key, value);
+    });
+    const next = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${next ? `?${next}` : ""}${window.location.hash}`);
+  }, [query, mood, style, category, availability, medium, artistFilter, year, maxPrice, format, color, sort]);
 
   useEffect(() => {
     const lifecycle = new AbortController();
     const timer = window.setTimeout(async () => {
       setSearching(true);
       setSearchError("");
-      const params = new URLSearchParams({ q: query, mood, style, category, availability, medium, artist: artistFilter, year: year === "All years" ? "" : year, maxPrice, sort });
+      const params = new URLSearchParams({ q: query, mood, style, category, availability, medium, artist: artistFilter, year: year === "All years" ? "" : year, maxPrice, type: format === "All formats" ? "" : format, color: color === "All colors" ? "" : color, sort });
       try {
         const response = await fetch(`/api/artworks?${params}`, { signal: lifecycle.signal });
         if (!response.ok) throw new Error("Search failed");
@@ -88,7 +102,7 @@ export function GalleryExperience({ initialArtworks, artists, viewer, user, data
       }
     }, 320);
     return () => { lifecycle.abort(); window.clearTimeout(timer); };
-  }, [query, mood, style, category, availability, medium, artistFilter, year, maxPrice, sort]);
+  }, [query, mood, style, category, availability, medium, artistFilter, year, maxPrice, format, color, sort]);
 
   useEffect(() => {
     if (!databaseReady) return;
@@ -159,7 +173,7 @@ export function GalleryExperience({ initialArtworks, artists, viewer, user, data
 
   function requireAccount() {
     if (user && databaseReady) return true;
-    window.location.href = user ? "/account?setup=database" : "/sign-in";
+    router.push(user ? "/account?setup=database" : "/sign-in");
     return false;
   }
   function runToggle(kind: "like" | "save", id: string) {
@@ -279,9 +293,9 @@ export function GalleryExperience({ initialArtworks, artists, viewer, user, data
             <div className="flex flex-wrap gap-2"><Select value={mood} onValueChange={setMood}><SelectTrigger aria-label="Mood" className="h-11 rounded-full border-white/12 px-4"><SelectValue /></SelectTrigger><SelectContent>{["All moods", ...moods].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select><Select value={style} onValueChange={setStyle}><SelectTrigger aria-label="Style" className="h-11 rounded-full border-white/12 px-4"><SelectValue /></SelectTrigger><SelectContent>{["All styles", ...styles].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select><Select value={category} onValueChange={setCategory}><SelectTrigger aria-label="Category" className="h-11 rounded-full border-white/12 px-4"><SelectValue /></SelectTrigger><SelectContent>{["All categories", ...new Set(initialArtworks.map((item) => item.category).filter(Boolean))].map((item) => <SelectItem key={item} value={item!}>{item}</SelectItem>)}</SelectContent></Select><Select value={availability} onValueChange={setAvailability}><SelectTrigger aria-label="Availability" className="h-11 rounded-full border-white/12 px-4"><SelectValue /></SelectTrigger><SelectContent>{["All availability", "AVAILABLE", "RESERVED", "SOLD_OUT"].map((item) => <SelectItem key={item} value={item}>{item.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select><Select value={sort} onValueChange={setSort}><SelectTrigger aria-label="Sort artwork" className="h-11 rounded-full border-white/12 px-4"><SelectValue /></SelectTrigger><SelectContent>{["Recommended", "Trending", "Newest", "Popular", "Price low", "Price high"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select></div>
           </div>
           {viewer.recentSearches.length > 0 && <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-white/40"><span>Recent</span>{viewer.recentSearches.map((item) => <button key={item} onClick={() => setQuery(item)} className="rounded-full border border-white/10 px-3 py-1.5 hover:border-white/30 hover:text-white">{item}</button>)}</div>}
-          <details className="border-b border-white/10 py-4"><summary className="cursor-pointer text-sm text-white/55 hover:text-white">More filters: medium, artist, year, price</summary><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><Select value={medium} onValueChange={setMedium}><SelectTrigger aria-label="Medium" className="h-11 border-white/12"><SelectValue /></SelectTrigger><SelectContent>{["All media", ...new Set(initialArtworks.map((item) => item.medium))].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select><Select value={artistFilter} onValueChange={setArtistFilter}><SelectTrigger aria-label="Artist" className="h-11 border-white/12"><SelectValue /></SelectTrigger><SelectContent>{["All artists", ...new Set(initialArtworks.map((item) => item.artist))].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select><Select value={year} onValueChange={setYear}><SelectTrigger aria-label="Year" className="h-11 border-white/12"><SelectValue /></SelectTrigger><SelectContent>{["All years", ...new Set(initialArtworks.map((item) => String(item.year)))].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select><label className="flex items-center gap-3 border border-white/12 px-4"><span className="text-sm text-white/45">Under ₹</span><input value={maxPrice} onChange={(event) => setMaxPrice(event.target.value.replace(/\D/g, ""))} inputMode="numeric" aria-label="Maximum price" placeholder="Any" className="min-w-0 flex-1 bg-transparent text-sm outline-none" /></label></div></details>
+          <details className="border-b border-white/10 py-4"><summary className="cursor-pointer text-sm text-white/55 hover:text-white">More filters: medium, format, color, artist, year, price</summary><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3"><Select value={medium} onValueChange={setMedium}><SelectTrigger aria-label="Medium" className="h-11 border-white/12"><SelectValue /></SelectTrigger><SelectContent>{["All media", ...new Set(initialArtworks.map((item) => item.medium))].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select><Select value={format} onValueChange={setFormat}><SelectTrigger aria-label="Artwork format" className="h-11 border-white/12"><SelectValue /></SelectTrigger><SelectContent>{["All formats", "PHYSICAL", "DIGITAL"].map((item) => <SelectItem key={item} value={item}>{item.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select><Select value={color} onValueChange={setColor}><SelectTrigger aria-label="Dominant color" className="h-11 border-white/12"><SelectValue /></SelectTrigger><SelectContent>{["All colors", ...new Set(initialArtworks.flatMap((item) => item.colors))].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select><Select value={artistFilter} onValueChange={setArtistFilter}><SelectTrigger aria-label="Artist" className="h-11 border-white/12"><SelectValue /></SelectTrigger><SelectContent>{["All artists", ...new Set(initialArtworks.map((item) => item.artist))].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select><Select value={year} onValueChange={setYear}><SelectTrigger aria-label="Year" className="h-11 border-white/12"><SelectValue /></SelectTrigger><SelectContent>{["All years", ...new Set(initialArtworks.map((item) => String(item.year)))].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select><label className="flex items-center gap-3 border border-white/12 px-4"><span className="text-sm text-white/45">Under ₹</span><input value={maxPrice} onChange={(event) => setMaxPrice(event.target.value.replace(/\D/g, ""))} inputMode="numeric" aria-label="Maximum price" placeholder="Any" className="min-w-0 flex-1 bg-transparent text-sm outline-none" /></label></div></details>
           <p className="mt-4 min-h-5 text-sm text-white/45" aria-live="polite">{searching ? "Searching the gallery…" : searchError || `${filtered.length} ${filtered.length === 1 ? "artwork" : "artworks"}`}</p>
-          {filtered.length ? <div className="mt-6 grid gap-x-5 gap-y-14 sm:grid-cols-2 lg:grid-cols-3">{filtered.map((artwork, index) => <ArtworkCard key={artwork.id} artwork={artwork} liked={liked.includes(artwork.id)} saved={saved.includes(artwork.id)} reason={personalized && index < 3 ? recommendationReason(artwork, preferences) : undefined} onLike={toggleLike} onSave={toggleSave} onView={(item) => { setDetail(item); if (user && databaseReady) startTransition(() => void recordArtworkView(item.id)); }} onCart={addCart} priority={index < 3} />)}</div> : <div className="grid min-h-[340px] place-items-center text-center"><div><Search size={34} className="mx-auto text-white/20" /><h3 className="mt-5 font-serif text-4xl">We couldn’t find that feeling.</h3><p className="mt-2 text-white/40">Try a broader color, mood or style.</p><button onClick={() => { setQuery(""); setMood("All moods"); setStyle("All styles"); setCategory("All categories"); setAvailability("All availability"); setMedium("All media"); setArtistFilter("All artists"); setYear("All years"); setMaxPrice(""); }} className="mt-6 rounded-full border border-white/20 px-5 py-3 text-sm">Clear filters</button></div></div>}
+          {filtered.length ? <div className="mt-6 grid gap-x-5 gap-y-14 sm:grid-cols-2 lg:grid-cols-3">{filtered.map((artwork, index) => <ArtworkCard key={artwork.id} artwork={artwork} liked={liked.includes(artwork.id)} saved={saved.includes(artwork.id)} reason={personalized && index < 3 ? recommendationReason(artwork, preferences) : undefined} onLike={toggleLike} onSave={toggleSave} onView={(item) => { setDetail(item); if (user && databaseReady) startTransition(() => void recordArtworkView(item.id)); }} onCart={addCart} priority={index < 3} />)}</div> : <div className="grid min-h-[340px] place-items-center text-center"><div><Search size={34} className="mx-auto text-white/20" /><h3 className="mt-5 font-serif text-4xl">We couldn’t find that feeling.</h3><p className="mt-2 text-white/40">Try a broader color, mood or style.</p><button onClick={() => { setQuery(""); setMood("All moods"); setStyle("All styles"); setCategory("All categories"); setAvailability("All availability"); setMedium("All media"); setFormat("All formats"); setColor("All colors"); setArtistFilter("All artists"); setYear("All years"); setMaxPrice(""); setSort("Recommended"); }} className="mt-6 rounded-full border border-white/20 px-5 py-3 text-sm">Clear filters</button></div></div>}
         </div>
       </section>
 
