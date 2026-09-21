@@ -4,6 +4,8 @@ import { and, eq, gte, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   artistProfiles,
+  auctionPaymentAttempts,
+  auctions,
   artworks,
   cartItems,
   carts,
@@ -45,6 +47,16 @@ export async function finalizeRazorpayPayment(providerOrderId: string, providerP
       if (payment.status === "REFUNDED") return { orderId: payment.orderId, status: "REFUNDED" };
       if (payment.status !== "PENDING") throw new Error(`Payment cannot be finalized from ${payment.status}.`);
 
+      const [order] = await tx.select({ buyerId: orders.buyerId, subtotal: orders.subtotal, total: orders.total }).from(orders).where(eq(orders.id, payment.orderId)).limit(1).for("update");
+      if (!order) throw new Error("Order not found.");
+      const [auctionAttempt] = await tx.select().from(auctionPaymentAttempts).where(eq(auctionPaymentAttempts.orderId, payment.orderId)).limit(1).for("update");
+      const auction = auctionAttempt ? (await tx.select().from(auctions).where(eq(auctions.id, auctionAttempt.auctionId)).limit(1).for("update"))[0] : undefined;
+      if (auctionAttempt) {
+        if (!auction || auction.status !== "PAYMENT_PENDING" || auction.winnerId !== order.buyerId || auctionAttempt.winnerId !== order.buyerId || !auction.paymentDeadlineAt || auction.paymentDeadlineAt <= new Date() || auction.winningBidPaise !== auctionAttempt.winningBidPaise || String(order.subtotal) !== `${auctionAttempt.winningBidPaise / 100n}.${String(auctionAttempt.winningBidPaise % 100n).padStart(2, "0")}` || auctionAttempt.status !== "PENDING") {
+          throw new InventoryConflictError(payment.orderId, payment.id);
+        }
+      }
+
       const items = await tx
         .select({
           id: orderItems.id,
@@ -58,16 +70,14 @@ export async function finalizeRazorpayPayment(providerOrderId: string, providerP
         .from(orderItems)
         .where(eq(orderItems.orderId, payment.orderId));
 
+      if (auctionAttempt && (items.length !== 1 || items[0]?.artworkId !== auction?.artworkId || items[0]?.quantity !== 1)) throw new InventoryConflictError(payment.orderId, payment.id);
       for (const item of items) {
         if (!item.artworkId) continue;
         const [updated] = await tx
           .update(artworks)
           .set({ stock: sql`${artworks.stock} - ${item.quantity}`, updatedAt: new Date() })
-          .where(and(
-            eq(artworks.id, item.artworkId),
-            eq(artworks.status, "PUBLISHED"),
-            eq(artworks.availability, "AVAILABLE"),
-            gte(artworks.stock, item.quantity),
+          .where(auctionAttempt ? and(eq(artworks.id, item.artworkId), eq(artworks.status, "PUBLISHED"), eq(artworks.availability, "RESERVED"), eq(artworks.stock, 1)) : and(
+            eq(artworks.id, item.artworkId), eq(artworks.status, "PUBLISHED"), eq(artworks.availability, "AVAILABLE"), gte(artworks.stock, item.quantity),
           ))
           .returning({ id: artworks.id, stock: artworks.stock });
         if (!updated) throw new InventoryConflictError(payment.orderId, payment.id);
@@ -79,6 +89,10 @@ export async function finalizeRazorpayPayment(providerOrderId: string, providerP
       await tx.update(payments).set({ providerPaymentId, status: "PAID", verifiedAt: new Date(), updatedAt: new Date() }).where(eq(payments.id, payment.id));
       await tx.update(paymentAttempts).set({ providerPaymentId, status: "PAID", verifiedAt: new Date(), updatedAt: new Date() }).where(eq(paymentAttempts.providerOrderId, providerOrderId));
       await tx.update(orders).set({ paymentStatus: "PAID", status: "CONFIRMED", updatedAt: new Date() }).where(eq(orders.id, payment.orderId));
+      if (auctionAttempt && auction) {
+        await tx.update(auctionPaymentAttempts).set({ status: "PAID", updatedAt: new Date() }).where(eq(auctionPaymentAttempts.id, auctionAttempt.id));
+        await tx.update(auctions).set({ status: "SOLD", updatedAt: new Date() }).where(and(eq(auctions.id, auction.id), eq(auctions.status, "PAYMENT_PENDING")));
+      }
 
       if (items.length) {
         await tx.insert(payouts).values(items.map((item) => ({
@@ -91,7 +105,6 @@ export async function finalizeRazorpayPayment(providerOrderId: string, providerP
         }))).onConflictDoNothing();
       }
 
-      const [order] = await tx.select({ buyerId: orders.buyerId }).from(orders).where(eq(orders.id, payment.orderId)).limit(1);
       if (order) {
         const [cart] = await tx.select({ id: carts.id }).from(carts).where(eq(carts.userId, order.buyerId)).limit(1);
         if (cart) await tx.delete(cartItems).where(eq(cartItems.cartId, cart.id));

@@ -1,10 +1,11 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/db";
-import { addresses, artistProfiles, artworks, cartItems, carts, orderItems, orders, paymentAttempts, payments } from "@/db/schema";
+import { addresses, artistProfiles, auctionPaymentAttempts, auctions, artworks, cartItems, carts, orderItems, orders, paymentAttempts, payments } from "@/db/schema";
 import { requireUser } from "@/lib/authz";
+import { requireAuctionsEnabled } from "@/lib/auctions/feature-flag";
 import { applyBasisPoints, majorToMinorUnits, minorToMajorUnits, toSafeProviderAmount } from "@/lib/money";
 import { getRazorpay } from "@/lib/razorpay";
 
@@ -66,5 +67,41 @@ export async function beginCheckout(input: z.input<typeof checkoutSchema>): Prom
     if (error instanceof Error && (error.message.includes("RAZORPAY_KEY_ID") || error.message.includes("RAZORPAY_KEY_SECRET"))) return { ok: false, error: "Secure payments are being configured. Please try again shortly." };
     if (error instanceof Error && error.message.includes("DATABASE_URL")) return { ok: false, error: "Checkout is being configured. Please try again shortly." };
     return { ok: false, error: "Checkout could not be started. Please try again." };
+  }
+}
+
+/** Creates the sole payment order for the persisted auction winner. Browser input never supplies a price. */
+export async function beginAuctionCheckout(auctionId: string, input: z.input<typeof checkoutSchema>): Promise<CheckoutResult> {
+  let provisionalOrderId: string | undefined;
+  try {
+    requireAuctionsEnabled();
+    const user = await requireUser(); const address = checkoutSchema.parse(input); const db = getDb();
+    const auction = await db.transaction(async (tx) => {
+      const [attempt] = await tx.select().from(auctionPaymentAttempts).innerJoin(auctions, eq(auctionPaymentAttempts.auctionId, auctions.id)).where(eq(auctions.id, auctionId)).limit(1).for("update");
+      if (!attempt) throw new Error("AUCTION_NOT_PAYABLE");
+      const paymentAttempt = attempt.auction_payment_attempts; const sale = attempt.auctions;
+      if (sale.status !== "PAYMENT_PENDING" || paymentAttempt.status !== "PENDING" || sale.winnerId !== user.id || paymentAttempt.winnerId !== user.id || !sale.paymentDeadlineAt || sale.paymentDeadlineAt <= new Date() || sale.winningBidPaise !== paymentAttempt.winningBidPaise || paymentAttempt.orderId) throw new Error("AUCTION_NOT_PAYABLE");
+      const [artwork] = await tx.select({ id: artworks.id, artistId: artworks.artistId, title: artworks.title, price: artworks.price, type: artworks.type, status: artworks.status, availability: artworks.availability, stock: artworks.stock, displayName: artistProfiles.displayName }).from(artworks).innerJoin(artistProfiles, eq(artworks.artistId, artistProfiles.id)).where(eq(artworks.id, sale.artworkId)).limit(1).for("update");
+      if (!artwork || artwork.status !== "PUBLISHED" || artwork.availability !== "RESERVED" || artwork.stock !== 1) throw new Error("AUCTION_NOT_PAYABLE");
+      const bidPaise = sale.winningBidPaise!; const shippingPaise = artwork.type === "PHYSICAL" ? 35_000n : 0n; const taxRateBps = Number(process.env.GST_RATE_BPS ?? "0");
+      if (!Number.isInteger(taxRateBps) || taxRateBps < 0 || taxRateBps > 10_000) throw new Error("GST_RATE_BPS must be an integer between 0 and 10000.");
+      const taxPaise = applyBasisPoints(bidPaise, taxRateBps); const totalPaise = bidPaise + shippingPaise + taxPaise;
+      const orderNumber = `GG-AUCTION-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
+      const [savedAddress] = await tx.insert(addresses).values({ userId: user.id, ...address, line2: address.line2 || null }).returning({ id: addresses.id });
+      const [order] = await tx.insert(orders).values({ orderNumber, buyerId: user.id, addressId: savedAddress.id, subtotal: minorToMajorUnits(bidPaise), shipping: minorToMajorUnits(shippingPaise), tax: minorToMajorUnits(taxPaise), total: minorToMajorUnits(totalPaise), currency: "INR" }).returning({ id: orders.id });
+      const fee = applyBasisPoints(bidPaise, 1_500);
+      await tx.insert(orderItems).values({ orderId: order.id, artworkId: artwork.id, artistId: artwork.artistId, titleSnapshot: artwork.title, artistNameSnapshot: artwork.displayName, unitPrice: minorToMajorUnits(bidPaise), quantity: 1, lineTotal: minorToMajorUnits(bidPaise), platformFee: minorToMajorUnits(fee), sellerEarnings: minorToMajorUnits(bidPaise - fee) });
+      await tx.update(auctionPaymentAttempts).set({ orderId: order.id, amountPaise: totalPaise, updatedAt: new Date() }).where(and(eq(auctionPaymentAttempts.id, paymentAttempt.id), eq(auctionPaymentAttempts.status, "PENDING")));
+      return { orderId: order.id, orderNumber, totalPaise };
+    });
+    provisionalOrderId = auction.orderId;
+    const providerOrder = await getRazorpay().orders.create({ amount: toSafeProviderAmount(auction.totalPaise), currency: "INR", receipt: auction.orderNumber, notes: { internal_order_id: auction.orderId, auction_id: auctionId } });
+    await db.transaction(async (tx) => { await tx.insert(payments).values({ orderId: auction.orderId, providerOrderId: providerOrder.id, amount: minorToMajorUnits(auction.totalPaise), currency: "INR", status: "PENDING" }); await tx.insert(paymentAttempts).values({ orderId: auction.orderId, providerOrderId: providerOrder.id, idempotencyKey: `razorpay:${providerOrder.id}`, amountPaise: auction.totalPaise, currency: "INR", status: "PENDING" }); await tx.update(orders).set({ paymentStatus: "PENDING", updatedAt: new Date() }).where(eq(orders.id, auction.orderId)); });
+    return { ok: true, key: process.env.RAZORPAY_KEY_ID!, providerOrderId: providerOrder.id, internalOrderId: auction.orderId, amountPaise: toSafeProviderAmount(auction.totalPaise), currency: "INR", buyer: { name: user.name ?? address.fullName, email: user.email ?? "" } };
+  } catch (error) {
+    if (provisionalOrderId) await getDb().update(orders).set({ paymentStatus: "FAILED", status: "CANCELLED", updatedAt: new Date() }).where(eq(orders.id, provisionalOrderId)).catch(() => undefined);
+    if (error instanceof z.ZodError) return { ok: false, error: error.issues[0]?.message ?? "Check your delivery details." };
+    if (error instanceof Error && (error.message === "AUCTION_NOT_PAYABLE" || error.message === "AUCTIONS_DISABLED")) return { ok: false, error: "This auction payment is no longer available." };
+    return { ok: false, error: "Auction payment could not be started. Please try again." };
   }
 }

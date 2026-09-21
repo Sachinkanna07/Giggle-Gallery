@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { beginCheckout } from "@/app/actions/checkout";
+import { beginAuctionCheckout, beginCheckout } from "@/app/actions/checkout";
 
 declare global {
   interface Window {
@@ -22,7 +22,7 @@ async function loadRazorpay() {
   });
 }
 
-export function CheckoutForm() {
+export function CheckoutForm({ auctionId }: { auctionId?: string }) {
   const router = useRouter();
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
@@ -31,14 +31,14 @@ export function CheckoutForm() {
     startTransition(async () => {
       const ready = await loadRazorpay();
       if (!ready) { setError("Secure payment could not load. Check your connection and try again."); return; }
-      const result = await beginCheckout(Object.fromEntries(formData) as never);
+      const result = auctionId ? await beginAuctionCheckout(auctionId, Object.fromEntries(formData) as never) : await beginCheckout(Object.fromEntries(formData) as never);
       if (!result.ok) { setError(result.error); return; }
       const checkout = new window.Razorpay!({
         key: result.key,
         amount: result.amountPaise,
         currency: result.currency,
         name: "Giggle Gallery",
-        description: "Original artwork order",
+        description: auctionId ? "Test auction winner payment" : "Original artwork order",
         order_id: result.providerOrderId,
         prefill: result.buyer,
         theme: { color: "#2757ff" },

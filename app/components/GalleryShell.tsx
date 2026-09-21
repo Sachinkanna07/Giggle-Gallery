@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { auth } from "@/auth";
 import { signOutUser } from "@/app/actions/auth";
+import { auctionsEnabled } from "@/lib/auctions/feature-flag";
 
 export async function GalleryShell({ children }: { children: React.ReactNode }) {
   const session = await auth();
+  const showAuctions = auctionsEnabled();
   const workspace = session?.user?.role === "ADMIN"
     ? { href: "/admin", label: "Admin" }
     : session?.user?.role === "SELLER"
@@ -16,6 +18,7 @@ export async function GalleryShell({ children }: { children: React.ReactNode }) 
         <nav className="flex items-center gap-3 text-sm text-white/60 sm:gap-6" aria-label="Account navigation">
           <Link href="/#gallery" className="hidden hover:text-white sm:inline">Gallery</Link>
           <Link href="/collections" className="hidden hover:text-white sm:inline">Collections</Link>
+          {showAuctions && <Link href="/auctions" className="hidden hover:text-white sm:inline">Auctions</Link>}
           <Link href="/orders" className="hidden hover:text-white sm:inline">Orders</Link>
           <Link href={workspace.href} className="hover:text-white">{workspace.label}</Link>
           {session?.user ? <form action={signOutUser}><button className="rounded-full border border-white/15 px-4 py-2 hover:border-white/40">Sign out</button></form> : <Link href="/sign-in" className="rounded-full bg-ivory px-4 py-2 font-semibold text-ink">Sign in</Link>}
@@ -24,6 +27,7 @@ export async function GalleryShell({ children }: { children: React.ReactNode }) 
       <nav className="sticky top-20 z-30 flex items-center justify-around border-b border-white/10 bg-ink/95 px-3 py-3 text-xs text-white/60 backdrop-blur-xl sm:hidden" aria-label="Mobile navigation">
         <Link href="/#gallery" className="px-2 py-1 hover:text-white">Gallery</Link>
         <Link href="/collections" className="px-2 py-1 hover:text-white">Saved</Link>
+        {showAuctions && <Link href="/auctions" className="px-2 py-1 hover:text-white">Auctions</Link>}
         <Link href="/orders" className="px-2 py-1 hover:text-white">Orders</Link>
         <Link href={workspace.href} className="px-2 py-1 hover:text-white">{workspace.label}</Link>
       </nav>

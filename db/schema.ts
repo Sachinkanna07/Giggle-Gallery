@@ -28,6 +28,8 @@ export const artworkType = pgEnum("artwork_type", ["DIGITAL", "PHYSICAL"]);
 export const availabilityStatus = pgEnum("availability_status", ["AVAILABLE", "RESERVED", "SOLD_OUT"]);
 export const orderStatus = pgEnum("order_status", ["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED", "REFUNDED"]);
 export const paymentStatus = pgEnum("payment_status", ["CREATED", "PENDING", "PAID", "FAILED", "REFUNDED", "CANCELLED"]);
+export const auctionStatus = pgEnum("auction_status", ["DRAFT", "SCHEDULED", "LIVE", "CANCELLED", "PAYMENT_PENDING", "PAYMENT_EXPIRED", "SOLD", "UNSOLD"]);
+export const auctionPaymentStatus = pgEnum("auction_payment_status", ["PENDING", "PAID", "EXPIRED", "FAILED", "CANCELLED"]);
 export const payoutStatus = pgEnum("payout_status", ["PENDING", "PROCESSING", "PAID", "FAILED", "ON_HOLD"]);
 export const webhookEventStatus = pgEnum("webhook_event_status", ["PROCESSING", "PROCESSED", "FAILED"]);
 export const artworkUploadStatus = pgEnum("artwork_upload_status", ["AUTHORIZED", "UPLOADED", "ATTACHED", "ABANDONED"]);
@@ -421,6 +423,74 @@ export const paymentAttempts = pgTable("payment_attempts", {
   uniqueIndex("payment_attempts_idempotency_unique").on(table.idempotencyKey),
   index("payment_attempts_order_created_idx").on(table.orderId, table.createdAt),
   check("payment_attempts_amount_positive", sql`${table.amountPaise} > 0`),
+]);
+
+// Auctions own the reservation: an artwork remains PUBLISHED but is marked RESERVED
+// only after an administrator schedules this record.  The finalizer validates this
+// relationship explicitly before it can consume reserved inventory.
+export const auctions = pgTable("auctions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  artworkId: uuid("artwork_id").notNull().references(() => artworks.id, { onDelete: "restrict" }),
+  sellerId: uuid("seller_id").notNull().references(() => artistProfiles.id, { onDelete: "restrict" }),
+  status: auctionStatus("status").default("DRAFT").notNull(),
+  openingBidPaise: bigint("opening_bid_paise", { mode: "bigint" }).notNull(),
+  minimumIncrementPaise: bigint("minimum_increment_paise", { mode: "bigint" }).notNull(),
+  currentBidPaise: bigint("current_bid_paise", { mode: "bigint" }),
+  winningBidPaise: bigint("winning_bid_paise", { mode: "bigint" }),
+  winnerId: text("winner_id").references(() => users.id, { onDelete: "restrict" }),
+  startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+  endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+  paymentDeadlineAt: timestamp("payment_deadline_at", { withTimezone: true }),
+  scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
+  ...timestamps,
+}, (table) => [
+  index("auctions_artwork_status_idx").on(table.artworkId, table.status),
+  index("auctions_seller_created_idx").on(table.sellerId, table.createdAt),
+  index("auctions_deadline_idx").on(table.status, table.paymentDeadlineAt),
+  uniqueIndex("auctions_one_active_artwork_unique").on(table.artworkId).where(sql`${table.status} in ('SCHEDULED', 'LIVE', 'PAYMENT_PENDING')`),
+  check("auctions_opening_bid_positive", sql`${table.openingBidPaise} > 0`),
+  check("auctions_increment_positive", sql`${table.minimumIncrementPaise} > 0`),
+  check("auctions_time_valid", sql`${table.endsAt} > ${table.startsAt}`),
+]);
+
+export const auctionBids = pgTable("auction_bids", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  auctionId: uuid("auction_id").notNull().references(() => auctions.id, { onDelete: "cascade" }),
+  bidderId: text("bidder_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  amountPaise: bigint("amount_paise", { mode: "bigint" }).notNull(),
+  idempotencyKey: text("idempotency_key").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("auction_bids_idempotency_unique").on(table.auctionId, table.bidderId, table.idempotencyKey),
+  index("auction_bids_auction_amount_idx").on(table.auctionId, table.amountPaise, table.createdAt),
+  check("auction_bids_amount_positive", sql`${table.amountPaise} > 0`),
+]);
+
+export const auctionEvents = pgTable("auction_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  auctionId: uuid("auction_id").notNull().references(() => auctions.id, { onDelete: "cascade" }),
+  actorId: text("actor_id").references(() => users.id, { onDelete: "set null" }),
+  type: text("type").notNull(),
+  reason: text("reason"),
+  data: jsonb("data").$type<Record<string, unknown>>().default({}).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [index("auction_events_auction_created_idx").on(table.auctionId, table.createdAt)]);
+
+export const auctionPaymentAttempts = pgTable("auction_payment_attempts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  auctionId: uuid("auction_id").notNull().references(() => auctions.id, { onDelete: "restrict" }),
+  winnerId: text("winner_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  winningBidPaise: bigint("winning_bid_paise", { mode: "bigint" }).notNull(),
+  amountPaise: bigint("amount_paise", { mode: "bigint" }),
+  orderId: uuid("order_id").references(() => orders.id, { onDelete: "restrict" }),
+  status: auctionPaymentStatus("status").default("PENDING").notNull(),
+  deadlineAt: timestamp("deadline_at", { withTimezone: true }).notNull(),
+  ...timestamps,
+}, (table) => [
+  uniqueIndex("auction_payment_attempts_auction_unique").on(table.auctionId),
+  uniqueIndex("auction_payment_attempts_order_unique").on(table.orderId),
+  index("auction_payment_attempts_winner_deadline_idx").on(table.winnerId, table.deadlineAt),
+  check("auction_payment_winning_bid_positive", sql`${table.winningBidPaise} > 0`),
 ]);
 
 export const payouts = pgTable("payouts", {
