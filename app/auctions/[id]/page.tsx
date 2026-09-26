@@ -11,172 +11,23 @@ import { artistProfiles, auctionBids, auctions, artworkImages, artworks } from "
 import { auctionsEnabled } from "@/lib/auctions/feature-flag";
 import { settleAuctionIfDue } from "@/lib/auctions/lifecycle";
 import { minimumAllowedBid } from "@/lib/auctions/rules";
-import { ArrowLeft, Gavel } from "lucide-react";
 
 export const dynamic = "force-dynamic";
-
 export default async function AuctionPage({ params }: { params: Promise<{ id: string }> }) {
   if (!auctionsEnabled()) notFound();
   const parsed = z.string().uuid().safeParse((await params).id);
   if (!parsed.success) notFound();
   const id = parsed.data;
-
   await settleAuctionIfDue(id);
   const db = getDb();
-  const [row] = await db
-    .select({
-      id: auctions.id,
-      status: auctions.status,
-      opening: auctions.openingBidPaise,
-      current: auctions.currentBidPaise,
-      increment: auctions.minimumIncrementPaise,
-      startsAt: auctions.startsAt,
-      endsAt: auctions.endsAt,
-      deadline: auctions.paymentDeadlineAt,
-      winnerId: auctions.winnerId,
-      title: artworks.title,
-      slug: artworks.slug,
-      artist: artistProfiles.displayName,
-      artistSlug: artistProfiles.slug,
-      image: artworkImages.url,
-      medium: artworks.medium,
-      widthCm: artworks.widthCm,
-      heightCm: artworks.heightCm,
-      year: artworks.year,
-    })
-    .from(auctions)
-    .innerJoin(artworks, eq(auctions.artworkId, artworks.id))
-    .innerJoin(artistProfiles, eq(artworks.artistId, artistProfiles.id))
-    .leftJoin(
-      artworkImages,
-      and(eq(artworkImages.artworkId, artworks.id), eq(artworkImages.sortOrder, 0))
-    )
-    .where(eq(auctions.id, id))
-    .limit(1);
-
+  const [row] = await db.select({ id: auctions.id, status: auctions.status, opening: auctions.openingBidPaise, current: auctions.currentBidPaise, increment: auctions.minimumIncrementPaise, startsAt: auctions.startsAt, endsAt: auctions.endsAt, deadline: auctions.paymentDeadlineAt, winnerId: auctions.winnerId, title: artworks.title, slug: artworks.slug, artist: artistProfiles.displayName, image: artworkImages.url }).from(auctions).innerJoin(artworks, eq(auctions.artworkId, artworks.id)).innerJoin(artistProfiles, eq(artworks.artistId, artistProfiles.id)).leftJoin(artworkImages, and(eq(artworkImages.artworkId, artworks.id), eq(artworkImages.sortOrder, 0))).where(eq(auctions.id, id)).limit(1);
   if (!row || row.status === "DRAFT" || row.status === "CANCELLED") notFound();
-
   const session = await auth();
   const [bids, totals, viewerBid] = await Promise.all([
-    db
-      .select({
-        bidderId: auctionBids.bidderId,
-        amount: auctionBids.amountPaise,
-        createdAt: auctionBids.createdAt,
-      })
-      .from(auctionBids)
-      .where(eq(auctionBids.auctionId, id))
-      .orderBy(desc(auctionBids.amountPaise), auctionBids.createdAt)
-      .limit(10),
+    db.select({ bidderId: auctionBids.bidderId, amount: auctionBids.amountPaise, createdAt: auctionBids.createdAt }).from(auctionBids).where(eq(auctionBids.auctionId, id)).orderBy(desc(auctionBids.amountPaise), auctionBids.createdAt).limit(10),
     db.select({ value: count() }).from(auctionBids).where(eq(auctionBids.auctionId, id)),
-    session?.user?.id
-      ? db
-          .select({ id: auctionBids.id })
-          .from(auctionBids)
-          .where(and(eq(auctionBids.auctionId, id), eq(auctionBids.bidderId, session.user.id)))
-          .limit(1)
-      : Promise.resolve([]),
+    session?.user?.id ? db.select({ id: auctionBids.id }).from(auctionBids).where(and(eq(auctionBids.auctionId, id), eq(auctionBids.bidderId, session.user.id))).limit(1) : Promise.resolve([]),
   ]);
-
-  const initial: AuctionLiveState = {
-    status: row.status,
-    currentBidPaise: String(row.current ?? row.opening),
-    nextMinimumBidPaise: String(minimumAllowedBid(row.opening, row.current, row.increment)),
-    bidCount: Number(totals[0]?.value ?? 0),
-    startsAt: row.startsAt.toISOString(),
-    endsAt: row.endsAt.toISOString(),
-    deadlineAt: row.deadline?.toISOString() ?? null,
-    serverNow: new Date().toISOString(),
-    viewerHasBid: viewerBid.length > 0,
-    viewerIsHighestBidder: Boolean(session?.user?.id && bids[0]?.bidderId === session.user.id),
-    viewerWon: Boolean(session?.user?.id && row.winnerId === session.user.id),
-    recentBids: bids.map((bid) => ({
-      amountPaise: String(bid.amount),
-      createdAt: bid.createdAt.toISOString(),
-    })),
-  };
-
-  return (
-    <GalleryShell>
-      <main className="section-shell py-12 lg:py-16">
-        {/* Navigation Breadcrumb */}
-        <Link
-          href="/auctions"
-          className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-secondary hover:text-text-primary mb-8"
-        >
-          <ArrowLeft size={14} /> Back to Live Auctions
-        </Link>
-
-        <div className="grid gap-12 lg:grid-cols-[1fr_1.1fr] lg:items-start">
-          {/* Left: Artwork Presentation Viewport */}
-          <div className="lg:sticky lg:top-28">
-            <div className="relative aspect-[4/5] overflow-hidden rounded-2xl border border-border bg-black/90 shadow-2xl">
-              {row.image ? (
-                <Image
-                  src={row.image}
-                  alt={row.title}
-                  fill
-                  priority
-                  sizes="(max-width: 1024px) 100vw, 45vw"
-                  className="object-contain p-4 sm:p-8"
-                />
-              ) : (
-                <div className="flex h-full items-center justify-center text-text-secondary text-sm">
-                  Artwork image loading
-                </div>
-              )}
-
-              {/* Museum framing badges */}
-              <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-xs text-white/70">
-                <span className="rounded-full bg-black/50 px-3 py-1 backdrop-blur-md">
-                  {row.widthCm && row.heightCm ? `${row.widthCm} × ${row.heightCm} cm` : "Verified Edition"}
-                </span>
-                <span className="rounded-full bg-black/50 px-3 py-1 backdrop-blur-md">
-                  Single Auction Lot
-                </span>
-              </div>
-            </div>
-
-            {/* Quick specifications under image */}
-            <div className="mt-4 flex flex-wrap items-center justify-between text-xs text-text-secondary px-2">
-              <span>{row.medium ?? "Archival Pigment"} · {row.year ?? "2026"}</span>
-              <Link
-                href={`/artwork/${row.slug}`}
-                className="underline underline-offset-4 hover:text-accent-secondary transition"
-              >
-                Fixed-price catalog record
-              </Link>
-            </div>
-          </div>
-
-          {/* Right: Auction Live Room Panel */}
-          <div>
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-accent-secondary">
-              <Gavel size={14} /> Christie&apos;s Style Live Room · Lot #{id.slice(0, 8)}
-            </div>
-
-            <h1 className="mt-3 font-serif text-4xl sm:text-5xl lg:text-6xl font-light tracking-[-0.035em] text-text-primary leading-[0.95]">
-              {row.title}
-            </h1>
-
-            <div className="mt-3 flex items-center gap-2 text-sm text-text-secondary">
-              <span>By</span>
-              <Link
-                href={`/artist/${row.artistSlug}`}
-                className="font-medium text-text-primary underline decoration-border underline-offset-4 hover:text-accent-secondary transition"
-              >
-                {row.artist}
-              </Link>
-            </div>
-
-            <AuctionLivePanel
-              auctionId={id}
-              initial={initial}
-              signedIn={Boolean(session?.user)}
-            />
-          </div>
-        </div>
-      </main>
-    </GalleryShell>
-  );
+  const initial: AuctionLiveState = { status: row.status, currentBidPaise: String(row.current ?? row.opening), nextMinimumBidPaise: String(minimumAllowedBid(row.opening, row.current, row.increment)), bidCount: Number(totals[0]?.value ?? 0), startsAt: row.startsAt.toISOString(), endsAt: row.endsAt.toISOString(), deadlineAt: row.deadline?.toISOString() ?? null, serverNow: new Date().toISOString(), viewerHasBid: viewerBid.length > 0, viewerIsHighestBidder: Boolean(session?.user?.id && bids[0]?.bidderId === session.user.id), viewerWon: Boolean(session?.user?.id && row.winnerId === session.user.id), recentBids: bids.map((bid) => ({ amountPaise: String(bid.amount), createdAt: bid.createdAt.toISOString() })) };
+  return <GalleryShell><main className="section-shell py-16"><p className="eyebrow">Test auction</p><div className="mt-6 grid gap-10 lg:grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)]">{row.image ? <div className="relative aspect-[4/5] overflow-hidden bg-white/5"><Image src={row.image} alt={row.title} fill priority sizes="(max-width: 1024px) 100vw, 40vw" className="object-cover" /></div> : <div className="aspect-[4/5] bg-white/5" />}<div><h1 className="section-title">{row.title}</h1><p className="mt-3 text-white/50">by {row.artist}</p><Link href={`/artwork/${row.slug}`} className="mt-4 inline-block text-sm text-white/60 underline underline-offset-4">View fixed-price artwork record</Link><AuctionLivePanel auctionId={id} initial={initial} signedIn={Boolean(session?.user)} /></div></div></main></GalleryShell>;
 }
