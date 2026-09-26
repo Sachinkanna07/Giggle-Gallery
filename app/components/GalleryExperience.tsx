@@ -15,6 +15,7 @@ import { ArtistDialog } from "./ArtistDialog";
 import { CommerceSheet } from "./CommerceSheet";
 import { DiscoveryDialog } from "./DiscoveryDialog";
 import { GiggleAssistant } from "./GiggleAssistant";
+import { PrimaryNavigation } from "./PrimaryNavigation";
 import { Artwork, moods, recommendationReason, styles } from "../data";
 
 const moodColors: Record<string, string> = { Joyful: "#c15b48", Calm: "#2757ff", Energetic: "#a83b31", Mysterious: "#5b45a9", Dreamy: "#446f98", Dark: "#202636", Peaceful: "#1f6d66", Bold: "#b27932" };
@@ -41,13 +42,14 @@ type Props = {
   initialArtworks: Artwork[];
   artists: ArtistSummary[];
   viewer: ViewerState;
-  user: { name?: string | null; email?: string | null } | null;
+  user: { name?: string | null; email?: string | null; role: "BUYER" | "SELLER" | "ADMIN" } | null;
   databaseReady: boolean;
+  auctionsAvailable: boolean;
   initialFilters: Record<string, string | undefined>;
   featuredAuctions: Array<{ id: string; title: string; status: string; end: string; currentBidPaise: string }>;
 };
 
-export function GalleryExperience({ initialArtworks, artists, viewer, user, databaseReady, initialFilters, featuredAuctions }: Props) {
+export function GalleryExperience({ initialArtworks, artists, viewer, user, databaseReady, auctionsAvailable, initialFilters, featuredAuctions }: Props) {
   const router = useRouter();
   const [liked, setLiked] = useState<string[]>(viewer.likedIds);
   const [saved, setSaved] = useState<string[]>(viewer.savedIds);
@@ -239,9 +241,6 @@ export function GalleryExperience({ initialArtworks, artists, viewer, user, data
       <Toaster position="top-center" theme="dark" toastOptions={{ style: { background: "#0d1118", color: "#f3efe7", border: "1px solid #ffffff1f" } }} />
       <header className="fixed inset-x-0 top-0 z-40 flex h-20 items-center justify-between border-b border-white/10 bg-ink/65 px-5 backdrop-blur-xl sm:px-10 lg:px-16">
         <a href="#top" className="font-serif text-xl tracking-[-0.04em] sm:text-2xl">GIGGLE <i className="font-light text-cobalt-light">GALLERY</i></a>
-        <nav className="hidden items-center gap-7 text-sm text-ivory/60 lg:flex" aria-label="Main navigation">
-          <a href="#discover" className="nav-link">Discover</a><a href="#gallery" className="nav-link">Gallery</a><a href="#artists" className="nav-link">Artists</a><a href="#collections" className="nav-link">Collections</a><a href="#for-you" className="nav-link">For You</a>
-        </nav>
         <div className="flex items-center gap-1 sm:gap-2">
           <button onClick={focusSearch} aria-label="Search artwork" className="header-icon"><Search size={18} /></button>
           <Link href="/collections" aria-label="Collections" className="header-icon hidden sm:grid"><Heart size={18} />{saved.length > 0 && <span className="count-badge">{saved.length}</span>}</Link>
@@ -249,6 +248,12 @@ export function GalleryExperience({ initialArtworks, artists, viewer, user, data
           <Link href={user ? "/account" : "/sign-in"} aria-label={user ? "Profile" : "Sign in"} className="header-icon hidden sm:grid"><UserRound size={18} /></Link>
         </div>
       </header>
+      <PrimaryNavigation
+        signedIn={Boolean(user)}
+        role={user?.role}
+        showAuctions={auctionsAvailable}
+        className="fixed inset-x-0 top-20 z-40 border-b border-white/10 bg-ink/90 px-5 py-3 backdrop-blur-xl sm:px-10 lg:px-16"
+      />
 
       <section id="top" className="hero relative isolate h-[100svh] min-h-[680px] overflow-hidden">
         <Image src="/midnight-tide.png" alt="Cobalt waves beneath a luminous moon" fill priority className="object-cover object-[64%_center]" sizes="100vw" />
