@@ -61,7 +61,7 @@ export default async function CheckoutPage() {
           ) : (
             <div className="mt-10 border border-white/10 p-10">
               <h2 className="font-serif text-3xl">Your cart is empty.</h2>
-              <Link href="/#gallery" className="button-light mt-6 inline-block">Explore artwork</Link>
+              <Link href="/gallery" className="button-light mt-6 inline-block">Explore artwork</Link>
             </div>
           )}
         </section>

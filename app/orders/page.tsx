@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import Link from "next/link";
 import { GalleryShell } from "@/app/components/GalleryShell";
+import { AccountShell } from "@/app/components/AccountShell";
 import { ReviewForm } from "@/app/components/ReviewForm";
 import { formatPrice } from "@/app/data";
 import { getBuyerOrders } from "@/lib/marketplace-data";
@@ -13,10 +14,8 @@ export default async function OrdersPage() {
   const orders = await getBuyerOrders(session.user.id);
   return (
     <GalleryShell>
-      <main className="section-shell py-16 lg:py-24">
-        <p className="eyebrow">Purchase history</p>
-        <h1 className="section-title mt-6">My <i>orders.</i></h1>
-        <div className="mt-12 grid gap-5">
+      <AccountShell active="Orders" eyebrow="Purchase history" title="Orders" description="Track payment, fulfillment, delivery, and reviews.">
+        <div className="grid gap-5">
           {orders.map((order) => {
             const paymentPending = order.paymentStatus === "CREATED" || order.paymentStatus === "PENDING";
             return (
@@ -34,9 +33,9 @@ export default async function OrdersPage() {
               </article>
             );
           })}
-          {!orders.length && <div className="grid min-h-72 place-items-center text-center"><div><h2 className="font-serif text-4xl">No orders yet.</h2><p className="mt-3 text-white/45">The right artwork is still waiting.</p><Link href="/#gallery" className="button-light mt-7">Explore gallery</Link></div></div>}
+          {!orders.length && <div className="grid min-h-72 place-items-center text-center"><div><h2 className="font-serif text-4xl">No orders yet.</h2><p className="mt-3 text-white/45">The right artwork is still waiting.</p><Link href="/gallery" className="button-light mt-7">Explore gallery</Link></div></div>}
         </div>
-      </main>
+      </AccountShell>
     </GalleryShell>
   );
 }

@@ -4,6 +4,7 @@ import { eq, sql } from "drizzle-orm";
 import { auth } from "@/auth";
 import { FollowArtistButton } from "@/app/components/FollowArtistButton";
 import { GalleryShell } from "@/app/components/GalleryShell";
+import { AccountShell } from "@/app/components/AccountShell";
 import { getDb } from "@/db";
 import { artistProfiles, follows } from "@/db/schema";
 
@@ -25,11 +26,8 @@ export default async function FollowingPage() {
     .innerJoin(artistProfiles, eq(follows.artistId, artistProfiles.id))
     .where(eq(follows.followerId, session.user.id));
 
-  return <GalleryShell><main className="section-shell py-16 lg:py-24">
-    <p className="eyebrow">Personal gallery</p>
-    <h1 className="section-title mt-6">Artists you <i>follow.</i></h1>
-    <p className="mt-5 max-w-2xl text-white/55">A private list built only from your saved follow relationships.</p>
-    <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+  return <GalleryShell><AccountShell active="Following" eyebrow="Collector space" title="Following" description="Artists whose practice you want to keep close.">
+    <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
       {rows.map((artist) => <article key={artist.id} className="overflow-hidden border border-white/10">
         <Link href={`/artist/${artist.slug}`} className="group block">
           <div className="relative aspect-[4/3] overflow-hidden bg-white/5"><Image src={artist.image ?? "/blue-thread.png"} alt={`Artwork by ${artist.name}`} fill sizes="(max-width: 640px) 100vw, 33vw" className="object-cover transition duration-500 group-hover:scale-105" /></div>
@@ -39,5 +37,5 @@ export default async function FollowingPage() {
       </article>)}
       {!rows.length && <p className="border border-white/10 p-10 text-white/45">You are not following an artist yet. Visit an artist profile to start your list.</p>}
     </div>
-  </main></GalleryShell>;
+  </AccountShell></GalleryShell>;
 }
