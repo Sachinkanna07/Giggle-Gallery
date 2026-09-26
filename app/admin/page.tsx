@@ -84,9 +84,11 @@ export default async function AdminPage() {
     <GalleryShell>
       <main className="section-shell py-16 lg:py-24">
         <p className="eyebrow">Protected administration</p>
-        <h1 className="section-title mt-6">Admin <i>review.</i></h1>
+        <h1 className="mt-4 font-serif text-5xl tracking-[-.05em] sm:text-6xl">Marketplace operations</h1>
+        <p className="mt-4 max-w-2xl text-white/50">Review supply, seller access, auctions, and verified order state from one operational workspace.</p>
+        <nav aria-label="Admin sections" className="mt-8 flex gap-6 overflow-x-auto border-y border-white/10 py-4 text-sm text-white/55"><a href="#artwork-review">Artwork review</a><a href="#published-artworks">Published</a><a href="#orders">Orders</a><a href="#seller-applications">Seller applications</a></nav>
 
-        <section aria-label="Marketplace overview" className="mt-12 grid gap-px bg-white/10 sm:grid-cols-2 lg:grid-cols-4">
+        <section aria-label="Marketplace overview" className="mt-10 grid gap-px bg-white/10 sm:grid-cols-2 lg:grid-cols-4">
           {[["Users", Number(userCountRows[0]?.value ?? 0)], ["Published artworks", Number(publishedCountRows[0]?.value ?? 0)], ["Rejected artworks", Number(rejectedCountRows[0]?.value ?? 0)], ["Recent orders", recentOrders.length]].map(([label, value]) => <div key={String(label)} className="bg-ink p-6"><p className="text-sm text-white/40">{label}</p><p className="mt-2 font-serif text-4xl">{value}</p></div>)}
         </section>
 
