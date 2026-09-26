@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { assertRuntimeEnvironment } from "@/lib/env";
+import { AmbientPointer } from "@/app/components/AmbientPointer";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -28,7 +29,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   assertRuntimeEnvironment();
   return (
     <html lang="en" suppressHydrationWarning>
-      <body>{children}</body>
+      <body><AmbientPointer />{children}</body>
     </html>
   );
 }
