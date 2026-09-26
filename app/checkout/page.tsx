@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, ShieldCheck, LockKeyhole } from "lucide-react";
 import { auth } from "@/auth";
 import { GalleryShell } from "@/app/components/GalleryShell";
 import { CheckoutForm } from "@/app/components/CheckoutForm";
@@ -22,26 +22,44 @@ export default async function CheckoutPage() {
 
   return (
     <GalleryShell>
-      <main className="section-shell grid gap-12 py-16 lg:grid-cols-[1fr_.75fr] lg:py-24">
+      <main className="section-shell grid gap-12 py-16 lg:grid-cols-[1fr_0.8fr] lg:py-24">
+        {/* Left Column: Form & Address Details */}
         <section>
-          <p className="eyebrow">Secure checkout</p>
-          <h1 className="mt-5 font-serif text-6xl tracking-[-.05em]">Where should your art arrive?</h1>
+          <p className="eyebrow flex items-center gap-2">
+            <LockKeyhole size={14} /> Bank-Encrypted Razorpay Checkout
+          </p>
+          <h1 className="mt-4 font-serif text-5xl sm:text-6xl tracking-[-0.04em] text-text-primary leading-[0.95]">
+            Where should your art <i>arrive?</i>
+          </h1>
+
+          {/* Unavailable Items Warning */}
           {unavailableItems.length > 0 && (
-            <div className="mt-8 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-6 text-amber-200">
+            <div className="mt-8 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-6 text-amber-200">
               <div className="flex items-center gap-3">
-                <AlertCircle size={22} className="text-amber-400" />
-                <h2 className="font-serif text-xl font-normal text-amber-300">Items no longer available for purchase</h2>
+                <AlertCircle size={22} className="text-amber-400 shrink-0" />
+                <h2 className="font-serif text-xl font-normal text-amber-300">
+                  Items no longer available for purchase
+                </h2>
               </div>
-              <p className="mt-2 text-sm opacity-90">The following item(s) in your cart are no longer available. Please remove them before proceeding to payment.</p>
+              <p className="mt-2 text-xs opacity-90">
+                The following item(s) in your cart are no longer available. Please remove them before proceeding to payment.
+              </p>
               <div className="mt-4 space-y-3 border-t border-amber-500/20 pt-4">
                 {unavailableItems.map((item) => (
-                  <div key={item.artworkId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-500/30 bg-red-950/20 p-4">
+                  <div
+                    key={item.artworkId}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-500/30 bg-rose-950/20 p-4"
+                  >
                     <div className="flex items-center gap-3">
-                      <div className="relative aspect-[4/5] w-12 overflow-hidden rounded"><Image src={item.image} alt="" fill sizes="48px" className="object-cover" /></div>
+                      <div className="relative aspect-[4/5] w-12 overflow-hidden rounded bg-bg-secondary">
+                        <Image src={item.image} alt="" fill sizes="48px" className="object-cover" />
+                      </div>
                       <div>
-                        <p className="font-medium text-white">{item.title}</p>
+                        <p className="font-medium text-white text-sm">{item.title}</p>
                         <p className="text-xs text-white/50">{item.artist} · Qty {item.quantity}</p>
-                        <p className="mt-1 text-xs font-semibold text-red-300">{item.unavailableReason ?? "No longer available"}</p>
+                        <p className="mt-1 text-xs font-semibold text-rose-300">
+                          {item.unavailableReason ?? "Sold out"}
+                        </p>
                       </div>
                     </div>
                     <RemoveCartItemButton artworkId={item.artworkId} title={item.title} />
@@ -50,45 +68,75 @@ export default async function CheckoutPage() {
               </div>
             </div>
           )}
+
           {canCheckout ? (
-            <div className="mt-10">
+            <div className="mt-10 rounded-2xl border border-border bg-surface p-6 sm:p-8 shadow-xl">
               <CheckoutForm />
             </div>
           ) : unavailableItems.length > 0 ? (
-            <div className="mt-8 rounded-xl border border-white/10 p-6 text-center text-white/50">
-              <p className="text-sm">Remove all unavailable items above to unlock checkout.</p>
+            <div className="mt-8 rounded-2xl border border-border bg-surface p-8 text-center text-text-secondary text-sm">
+              <p>Remove all unavailable pieces above to unlock checkout.</p>
             </div>
           ) : (
-            <div className="mt-10 border border-white/10 p-10">
-              <h2 className="font-serif text-3xl">Your cart is empty.</h2>
-              <Link href="/#gallery" className="button-light mt-6 inline-block">Explore artwork</Link>
+            <div className="mt-10 rounded-2xl border border-border bg-surface p-12 text-center">
+              <h2 className="font-serif text-3xl text-text-primary">Your cart is empty.</h2>
+              <p className="mt-2 text-xs text-text-secondary">Discover unique pieces in the gallery.</p>
+              <Link href="/#gallery" className="button-light mt-6 text-xs !py-2.5 !px-6 inline-block">
+                Explore gallery
+              </Link>
             </div>
           )}
         </section>
-        <aside className="h-fit border border-white/10 bg-white/[.025] p-6 lg:sticky lg:top-28">
-          <h2 className="font-serif text-3xl">Order summary</h2>
-          <div className="mt-6 space-y-5">
+
+        {/* Right Column: Order Summary & Price Transparency (Phase 27) */}
+        <aside className="h-fit rounded-2xl border border-border bg-surface p-6 sm:p-8 lg:sticky lg:top-28 shadow-xl">
+          <h2 className="font-serif text-3xl text-text-primary">Order Summary</h2>
+          <p className="text-xs text-text-secondary mt-1">Direct from verified artist studios</p>
+
+          <div className="mt-6 space-y-4 max-h-[380px] overflow-y-auto">
             {availableItems.length ? (
               availableItems.map((item) => (
-                <div key={item.artworkId} className="grid grid-cols-[64px_1fr_auto] gap-3">
-                  <div className="relative aspect-[4/5] overflow-hidden"><Image src={item.image} alt="" fill sizes="64px" className="object-cover" /></div>
-                  <div>
-                    <p className="font-medium">{item.title}</p>
-                    <p className="text-xs text-white/40">{item.artist} · Qty {item.quantity}</p>
+                <div key={item.artworkId} className="grid grid-cols-[60px_1fr_auto] gap-3 items-center border-b border-border/40 pb-3">
+                  <div className="relative aspect-[4/5] overflow-hidden rounded-lg bg-bg-secondary">
+                    <Image src={item.image} alt="" fill sizes="60px" className="object-cover" />
                   </div>
-                  <span className="text-sm">{formatPrice(item.price * item.quantity)}</span>
+                  <div>
+                    <p className="font-serif text-base text-text-primary leading-tight">{item.title}</p>
+                    <p className="text-xs text-text-secondary mt-0.5">{item.artist} · Qty {item.quantity}</p>
+                  </div>
+                  <span className="text-xs font-semibold text-text-primary">
+                    {formatPrice(item.price * item.quantity)}
+                  </span>
                 </div>
               ))
             ) : (
-              <p className="text-sm text-white/40">No available items in cart.</p>
+              <p className="text-xs text-text-secondary py-4">No available items in cart.</p>
             )}
           </div>
-          <dl className="mt-7 space-y-3 border-t border-white/10 pt-5 text-sm">
-            <div className="flex justify-between text-white/50"><dt>Subtotal</dt><dd>{formatPrice(subtotal)}</dd></div>
-            <div className="flex justify-between text-white/50"><dt>Insured delivery</dt><dd>{formatPrice(shipping)}</dd></div>
-            <div className="flex justify-between border-t border-white/10 pt-4 text-lg"><dt>Total</dt><dd className="font-semibold">{formatPrice(subtotal + shipping)}</dd></div>
+
+          <dl className="mt-6 space-y-3 border-t border-border pt-5 text-xs text-text-secondary">
+            <div className="flex justify-between">
+              <dt>Artwork subtotal</dt>
+              <dd className="font-medium text-text-primary">{formatPrice(subtotal)}</dd>
+            </div>
+            <div className="flex justify-between">
+              <dt>Insured fine art transit</dt>
+              <dd className="font-medium text-text-primary">
+                {shipping > 0 ? formatPrice(shipping) : "Free"}
+              </dd>
+            </div>
+            <div className="flex justify-between border-t border-border pt-4 text-base font-semibold text-text-primary">
+              <dt>Collector Total</dt>
+              <dd className="font-serif text-2xl font-normal text-text-primary">{formatPrice(subtotal + shipping)}</dd>
+            </div>
           </dl>
-          <p className="mt-4 text-xs text-white/35">Final totals and availability are recalculated on the server before payment.</p>
+
+          <div className="mt-6 rounded-xl border border-border/80 bg-surface-elevated/40 p-3.5 text-[11px] text-text-secondary flex items-start gap-2.5">
+            <ShieldCheck size={16} className="text-accent-secondary shrink-0 mt-0.5" />
+            <span>
+              All transactions are cryptographically verified by Razorpay with bank-level encryption. Subtotals are re-confirmed on the server.
+            </span>
+          </div>
         </aside>
       </main>
     </GalleryShell>
