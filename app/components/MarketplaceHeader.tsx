@@ -111,7 +111,7 @@ export function MarketplaceHeader({ user, viewer, unreadCount, latestNotificatio
           <Link href="/" className="shrink-0 font-serif text-lg tracking-[-.045em] text-[#F2EEE5] sm:text-xl">GIGGLE <i className="font-normal text-[#C6A66A]">GALLERY</i></Link>
           <div className="mx-auto hidden max-w-2xl flex-1 md:block"><GlobalSearch recentSearches={viewer.recentSearches} /></div>
           <nav className="ml-auto flex shrink-0 items-center gap-1" aria-label="Marketplace navigation">
-            <Link href="/#gallery" className="hidden rounded-full px-3 py-2 text-sm text-white/60 hover:bg-white/[.06] hover:text-white lg:block">Discover</Link>
+            <Link href="/gallery" className="hidden rounded-full px-3 py-2 text-sm text-white/60 hover:bg-white/[.06] hover:text-white md:block">Gallery</Link>
             {showAuctions && <Link href="/auctions" className="hidden rounded-full px-3 py-2 text-sm text-white/60 hover:bg-white/[.06] hover:text-white lg:block">Auctions</Link>}
             <Link href="/favorites" aria-label={`Favorites, ${viewer.savedIds.length} saved`} className="header-icon hidden sm:grid"><Heart size={18} />{viewer.savedIds.length > 0 && <span className="count-badge">{viewer.savedIds.length}</span>}</Link>
             <button type="button" onClick={() => setCartOpen(true)} aria-label={`Cart, ${cart.length} items`} className="header-icon"><ShoppingBag size={18} />{cart.length > 0 && <span className="count-badge">{cart.length}</span>}</button>
