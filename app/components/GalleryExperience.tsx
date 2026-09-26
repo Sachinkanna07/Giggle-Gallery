@@ -4,18 +4,17 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, useTransition } from "react";
-import { ArrowDown, ArrowRight, ArrowUpRight, Heart, Home, Search, ShoppingBag, Sparkles, UserRound } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUpRight, Heart, Search, Sparkles } from "lucide-react";
 import { toast, Toaster } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { clearCart as clearCartAction, recordArtworkView, saveTasteProfile, setCartQuantity, toggleFollow as toggleFollowAction, toggleLike as toggleLikeAction, toggleSave as toggleSaveAction } from "@/app/actions/marketplace";
+import { recordArtworkView, saveTasteProfile, setCartQuantity, toggleFollow as toggleFollowAction, toggleLike as toggleLikeAction, toggleSave as toggleSaveAction } from "@/app/actions/marketplace";
 import type { ArtistSummary, CartItemDetail, ViewerState } from "@/lib/marketplace-data";
 import { ArtworkCard } from "./ArtworkCard";
 import { ArtworkDetail } from "./ArtworkDetail";
 import { ArtistDialog } from "./ArtistDialog";
-import { CommerceSheet } from "./CommerceSheet";
 import { DiscoveryDialog } from "./DiscoveryDialog";
 import { GiggleAssistant } from "./GiggleAssistant";
-import { PrimaryNavigation } from "./PrimaryNavigation";
+import { MarketplaceHeader } from "./MarketplaceHeader";
 import { Artwork, moods, recommendationReason, styles } from "../data";
 
 const moodColors: Record<string, string> = { Joyful: "#c15b48", Calm: "#2757ff", Energetic: "#a83b31", Mysterious: "#5b45a9", Dreamy: "#446f98", Dark: "#202636", Peaceful: "#1f6d66", Bold: "#b27932" };
@@ -45,11 +44,13 @@ type Props = {
   user: { name?: string | null; email?: string | null; role: "BUYER" | "SELLER" | "ADMIN" } | null;
   databaseReady: boolean;
   auctionsAvailable: boolean;
+  unreadCount: number;
+  latestNotifications: Array<{ id: string; title: string; message: string; url: string; unread: boolean; createdAt: string }>;
   initialFilters: Record<string, string | undefined>;
   featuredAuctions: Array<{ id: string; title: string; status: string; end: string; currentBidPaise: string }>;
 };
 
-export function GalleryExperience({ initialArtworks, artists, viewer, user, databaseReady, auctionsAvailable, initialFilters, featuredAuctions }: Props) {
+export function GalleryExperience({ initialArtworks, artists, viewer, user, databaseReady, auctionsAvailable, unreadCount, latestNotifications, initialFilters, featuredAuctions }: Props) {
   const router = useRouter();
   const [liked, setLiked] = useState<string[]>(viewer.likedIds);
   const [saved, setSaved] = useState<string[]>(viewer.savedIds);
@@ -74,7 +75,6 @@ export function GalleryExperience({ initialArtworks, artists, viewer, user, data
   const [detail, setDetail] = useState<Artwork | null>(null);
   const [artistId, setArtistId] = useState<string | null>(null);
   const [discoverOpen, setDiscoverOpen] = useState(false);
-  const [cartOpen, setCartOpen] = useState(false);
   const [personalized, setPersonalized] = useState(viewer.preferences.length > 0);
   const [, startTransition] = useTransition();
   useEffect(() => {
@@ -165,8 +165,7 @@ export function GalleryExperience({ initialArtworks, artists, viewer, user, data
           const id = typeof input === "object" && input && "artworkId" in input ? String((input as { artworkId: unknown }).artworkId) : "";
           const artwork = initialArtworks.find((item) => item.id === id);
           if (!artwork) throw new Error("Artwork not found.");
-          startTransition(async () => { const result = await setCartQuantity(id, 1); if (result.ok) setCart((current) => current.some((item) => item.artworkId === id) ? current : [...current, artworkToCartDetail(artwork)]); });
-          setCartOpen(true);
+          startTransition(async () => { const result = await setCartQuantity(id, 1); if (result.ok) setCart((current) => { const next = current.some((item) => item.artworkId === id) ? current : [...current, artworkToCartDetail(artwork)]; window.dispatchEvent(new CustomEvent<CartItemDetail[]>("giggle:cart-updated", { detail: next })); window.dispatchEvent(new Event("giggle:cart-open")); return next; }); });
           return { status: "requested", artworkId: id };
         },
       }, { signal: lifecycle.signal }),
@@ -194,17 +193,21 @@ export function GalleryExperience({ initialArtworks, artists, viewer, user, data
   }
   const toggleLike = (id: string) => runToggle("like", id);
   const toggleSave = (id: string) => runToggle("save", id);
+  function syncCart(next: CartItemDetail[], open = false) {
+    setCart(next);
+    window.dispatchEvent(new CustomEvent<CartItemDetail[]>("giggle:cart-updated", { detail: next }));
+    if (open) window.dispatchEvent(new Event("giggle:cart-open"));
+  }
   function addCart(artwork: Artwork) {
     if (!requireAccount()) return;
     if (!cart.some((item) => item.artworkId === artwork.id)) {
-      setCart((current) => [...current, artworkToCartDetail(artwork)]);
-      startTransition(async () => { const result = await setCartQuantity(artwork.id, 1); if (!result.ok) { setCart((current) => current.filter((item) => item.artworkId !== artwork.id)); toast.error(result.error); } });
+      const next = [...cart, artworkToCartDetail(artwork)];
+      syncCart(next, true);
+      startTransition(async () => { const result = await setCartQuantity(artwork.id, 1); if (!result.ok) { syncCart(cart); toast.error(result.error); } });
       toast.success(`${artwork.title} added to your cart`);
     } else toast("That artwork is already in your cart");
-    setCartOpen(true);
+    window.dispatchEvent(new Event("giggle:cart-open"));
   }
-  function updateCart(id: string, quantity: number) { const before = cart; setCart((current) => quantity === 0 ? current.filter((item) => item.artworkId !== id) : current.map((item) => item.artworkId === id ? { ...item, quantity } : item)); startTransition(async () => { const result = await setCartQuantity(id, quantity); if (!result.ok) { setCart(before); toast.error(result.error); } }); }
-  function clearCart() { const before = cart; setCart([]); startTransition(async () => { const result = await clearCartAction(); if (!result.ok) { setCart(before); toast.error(result.error); } }); }
   const completeDiscoveryStable = useCallback((next: string[]) => {
     setPreferences(next); setPersonalized(true); setMood(next[0]); setStyle(next[3]);
     if (user && databaseReady) startTransition(async () => { const result = await saveTasteProfile(next); if (!result.ok) toast.error(result.error); });
@@ -214,22 +217,6 @@ export function GalleryExperience({ initialArtworks, artists, viewer, user, data
 
   const filtered = results;
   const detailReason = detail ? recommendationReason(detail, preferences) : "";
-  const cartItems = cart.map((entry) => {
-    const catalogMatch = initialArtworks.find((artwork) => artwork.id === entry.artworkId);
-    const stock = catalogMatch?.stock ?? entry.stock ?? 1;
-    return {
-      artworkId: entry.artworkId,
-      title: catalogMatch?.title ?? entry.title ?? "Artwork",
-      artist: catalogMatch?.artist ?? entry.artist ?? "Artist",
-      price: catalogMatch?.price ?? entry.price ?? 0,
-      image: catalogMatch?.image ?? entry.image ?? "/midnight-tide.png",
-      type: (catalogMatch?.type ?? entry.type ?? "PHYSICAL") as "DIGITAL" | "PHYSICAL",
-      stock,
-      quantity: entry.quantity,
-      isAvailable: entry.isAvailable ?? (catalogMatch ? catalogMatch.availability === "AVAILABLE" && stock >= entry.quantity : false),
-      unavailableReason: entry.unavailableReason ?? (catalogMatch ? (catalogMatch.availability !== "AVAILABLE" ? "Artwork is sold out." : undefined) : "This artwork is no longer listed in the gallery."),
-    };
-  });
   const savedItems = saved.map((id) => initialArtworks.find((artwork) => artwork.id === id)).filter(Boolean) as Artwork[];
   const activeArtist = artists.find((artist) => artist.id === artistId);
 
@@ -239,21 +226,7 @@ export function GalleryExperience({ initialArtworks, artists, viewer, user, data
   return (
     <main className="min-h-screen overflow-hidden bg-ink text-ivory">
       <Toaster position="top-center" theme="dark" toastOptions={{ style: { background: "#0d1118", color: "#f3efe7", border: "1px solid #ffffff1f" } }} />
-      <header className="fixed inset-x-0 top-0 z-40 flex h-20 items-center justify-between border-b border-white/10 bg-ink/65 px-5 backdrop-blur-xl sm:px-10 lg:px-16">
-        <a href="#top" className="font-serif text-xl tracking-[-0.04em] sm:text-2xl">GIGGLE <i className="font-light text-cobalt-light">GALLERY</i></a>
-        <div className="flex items-center gap-1 sm:gap-2">
-          <button onClick={focusSearch} aria-label="Search artwork" className="header-icon"><Search size={18} /></button>
-          <Link href="/collections" aria-label="Collections" className="header-icon hidden sm:grid"><Heart size={18} />{saved.length > 0 && <span className="count-badge">{saved.length}</span>}</Link>
-          <button onClick={() => setCartOpen(true)} aria-label="Open cart" className="header-icon"><ShoppingBag size={18} />{cart.length > 0 && <span className="count-badge">{cart.length}</span>}</button>
-          <Link href={user ? "/account" : "/sign-in"} aria-label={user ? "Profile" : "Sign in"} className="header-icon hidden sm:grid"><UserRound size={18} /></Link>
-        </div>
-      </header>
-      <PrimaryNavigation
-        signedIn={Boolean(user)}
-        role={user?.role}
-        showAuctions={auctionsAvailable}
-        className="fixed inset-x-0 top-20 z-40 border-b border-white/10 bg-ink/90 px-5 py-3 backdrop-blur-xl sm:px-10 lg:px-16"
-      />
+      <MarketplaceHeader user={user} viewer={{ ...viewer, cart, savedIds: saved }} unreadCount={unreadCount} latestNotifications={latestNotifications} showAuctions={auctionsAvailable} />
 
       <section id="top" className="hero relative isolate h-[100svh] min-h-[680px] overflow-hidden">
         <Image src="/midnight-tide.png" alt="Cobalt waves beneath a luminous moon" fill priority className="object-cover object-[64%_center]" sizes="100vw" />
@@ -317,12 +290,9 @@ export function GalleryExperience({ initialArtworks, artists, viewer, user, data
 
       <footer className="border-t border-white/10 px-5 pb-28 pt-14 sm:px-10 sm:pb-16 lg:px-16"><div className="mx-auto flex max-w-[1600px] flex-col justify-between gap-10 sm:flex-row"><div><p className="font-serif text-3xl">GIGGLE <i className="text-cobalt-light">GALLERY</i></p><p className="mt-3 text-sm text-white/40">Art that feels like you.</p></div><div className="grid grid-cols-2 gap-x-14 gap-y-3 text-sm text-white/50"><a href="#gallery">Gallery</a><a href="#artists">Artists</a><a href="#collections">Collections</a><a href="#profile">Taste profile</a><button onClick={() => setDiscoverOpen(true)} className="text-left">Find my art</button><button onClick={focusSearch} className="text-left">Search</button></div></div><div className="mx-auto mt-14 flex max-w-[1600px] justify-between border-t border-white/10 pt-5 text-xs text-white/25"><span>© 2026 Giggle Gallery</span><span>Curated with feeling.</span></div></footer>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-white/10 bg-ink/90 px-2 py-2 backdrop-blur-xl sm:hidden" aria-label="Mobile navigation"><a href="#top" className="mobile-nav"><Home size={19} /><span>Home</span></a><button onClick={() => setDiscoverOpen(true)} className="mobile-nav"><Sparkles size={19} /><span>Discover</span></button><Link href="/collections" className="mobile-nav"><Heart size={19} /><span>Collections</span></Link><button onClick={() => setCartOpen(true)} className="mobile-nav"><ShoppingBag size={19} /><span>Cart</span></button><Link href={user ? "/account" : "/sign-in"} className="mobile-nav"><UserRound size={19} /><span>Profile</span></Link></nav>
-
       <DiscoveryDialog open={discoverOpen} onOpenChange={setDiscoverOpen} onComplete={completeDiscoveryStable} />
       <ArtworkDetail artwork={detail} liked={detail ? liked.includes(detail.id) : false} saved={detail ? saved.includes(detail.id) : false} reason={detailReason} onClose={() => setDetail(null)} onLike={() => detail && toggleLike(detail.id)} onSave={() => detail && toggleSave(detail.id)} onCart={() => detail && addCart(detail)} onArtist={showArtist} />
       <ArtistDialog artist={activeArtist ?? null} followed={activeArtist ? followed.includes(activeArtist.id) : false} works={initialArtworks.filter((artwork) => artwork.artistId === artistId)} onClose={() => setArtistId(null)} onFollow={() => { if (!activeArtist || !requireAccount()) return; const wasFollowing = followed.includes(activeArtist.id); setFollowed(wasFollowing ? followed.filter((id) => id !== activeArtist.id) : [...followed, activeArtist.id]); startTransition(async () => { const result = await toggleFollowAction(activeArtist.id); if (!result.ok) { setFollowed(followed); toast.error(result.error); } }); }} onArtwork={(artwork) => { setArtistId(null); window.setTimeout(() => setDetail(artwork), 180); }} />
-      <CommerceSheet open={cartOpen} onOpenChange={setCartOpen} items={cartItems} onQuantity={updateCart} onClear={clearCart} />
       <GiggleAssistant artworks={initialArtworks} onView={setDetail} />
     </main>
   );
