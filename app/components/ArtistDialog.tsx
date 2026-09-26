@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Check, MapPin, Plus, Palette } from "lucide-react";
+import { Check, MapPin, Plus } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import type { ArtistSummary } from "@/lib/marketplace-data";
 import { Artwork } from "../data";
@@ -20,85 +20,30 @@ export function ArtistDialog({ artist, followed, works, onClose, onFollow, onArt
   return (
     <Dialog open={Boolean(artist)} onOpenChange={(open) => !open && onClose()}>
       {artist && (
-        <DialogContent className="max-h-[92vh] overflow-y-auto rounded-2xl border-border bg-surface p-0 text-text-primary sm:max-w-4xl shadow-2xl backdrop-blur-2xl">
-          <div className="relative min-h-[320px] overflow-hidden p-6 sm:p-10">
-            <Image
-              src={artist.image}
-              alt=""
-              fill
-              sizes="(max-width: 640px) 100vw, 800px"
-              className="object-cover opacity-35 blur-[1px]"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-surface via-surface/70 to-transparent" />
-            <div className="relative z-10 flex min-h-[260px] flex-col justify-end">
-              <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-accent-secondary">
-                <MapPin size={13} /> {artist.location}
-              </p>
-              <DialogTitle className="font-serif text-5xl sm:text-7xl font-normal tracking-[-0.04em] text-text-primary leading-tight">
-                {artist.name}
-              </DialogTitle>
-              <DialogDescription className="mt-3 max-w-xl text-sm leading-relaxed text-text-secondary">
-                {artist.bio}
-              </DialogDescription>
-              <div className="mt-6 flex flex-wrap items-center gap-4 text-xs text-text-secondary">
-                <span className="flex items-center gap-1 font-medium text-text-primary">
-                  <Palette size={13} className="text-accent-secondary" /> {artist.discipline}
-                </span>
-                <span>•</span>
-                <span>{artist.works} artworks</span>
-                <span>•</span>
-                <span>{artist.followers} followers</span>
-                <Link
-                  href={`/artist/${artist.slug}`}
-                  className="underline decoration-border underline-offset-4 hover:text-text-primary transition"
-                >
-                  Full exhibition page
-                </Link>
-                <button
-                  aria-pressed={followed}
-                  onClick={onFollow}
-                  className={`ml-auto inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition ${
-                    followed
-                      ? "bg-text-primary text-bg-primary"
-                      : "bg-accent text-white hover:bg-accent-secondary"
-                  }`}
-                >
-                  {followed ? <Check size={14} /> : <Plus size={14} />}{" "}
-                  {followed ? "Following" : "Follow"}
+        <DialogContent className="max-h-[92vh] overflow-y-auto border-white/15 bg-[#090c12] p-0 text-ivory sm:max-w-5xl">
+          <div className="relative min-h-[330px] overflow-hidden p-7 sm:p-10">
+            <Image src={artist.image} alt="" fill sizes="(max-width: 640px) 100vw, 960px" className="object-cover opacity-45 blur-[2px]" />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#090c12] via-[#090c12]/60 to-black/15" />
+            <div className="relative z-10 flex min-h-[270px] flex-col justify-end">
+              <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[.16em] text-white/60"><MapPin size={14} /> {artist.location}</p>
+              <DialogTitle className="font-serif text-6xl font-normal tracking-[-.06em] sm:text-8xl">{artist.name}</DialogTitle>
+              <DialogDescription className="mt-4 max-w-xl text-base leading-relaxed text-white/70">{artist.bio}</DialogDescription>
+              <div className="mt-6 flex flex-wrap items-center gap-5 text-sm text-white/55">
+                <span>{artist.discipline}</span><span>{artist.works} artworks</span><span>{artist.followers} followers</span>
+                <Link href={`/artist/${artist.slug}`} className="underline decoration-white/20 underline-offset-4 hover:text-white">View public profile</Link>
+                <button aria-pressed={followed} onClick={onFollow} className={`ml-auto inline-flex items-center gap-2 rounded-full px-5 py-3 font-semibold transition ${followed ? "bg-white text-black" : "bg-cobalt text-white hover:bg-cobalt-light hover:text-black"}`}>
+                  {followed ? <Check size={16} /> : <Plus size={16} />} {followed ? "Following" : "Follow"}
                 </button>
               </div>
             </div>
           </div>
-          <div className="border-t border-border px-6 pb-8 pt-6 sm:px-10">
-            <div className="mb-4 flex items-baseline justify-between">
-              <h3 className="font-serif text-2xl text-text-primary">Selected Works</h3>
-              <span className="text-[11px] uppercase tracking-wider text-text-secondary">
-                Exhibition Highlights
-              </span>
-            </div>
+          <div className="border-t border-white/10 px-7 pb-9 pt-7 sm:px-10">
+            <div className="mb-5 flex items-end justify-between"><h3 className="font-serif text-3xl">Featured works</h3><span className="text-xs uppercase tracking-[.12em] text-white/35">Selected collection</span></div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {works.map((work) => (
-                <button
-                  key={work.id}
-                  onClick={() => onArtwork(work)}
-                  className="group rounded-xl overflow-hidden border border-border bg-surface-elevated/40 text-left transition hover:border-accent-secondary"
-                >
-                  <div className="relative aspect-[4/3] overflow-hidden bg-bg-secondary">
-                    <Image
-                      src={work.image}
-                      alt={work.title}
-                      fill
-                      sizes="(max-width: 640px) 50vw, 240px"
-                      className="object-cover transition duration-500 group-hover:scale-105"
-                      style={{ objectPosition: work.imagePosition ?? "center" }}
-                    />
-                  </div>
-                  <div className="p-3">
-                    <p className="font-serif text-sm text-text-primary truncate">{work.title}</p>
-                    <p className="mt-0.5 text-[10px] text-text-secondary">
-                      {work.year} · {work.medium}
-                    </p>
-                  </div>
+                <button key={work.id} onClick={() => onArtwork(work)} className="group text-left">
+                  <div className="relative aspect-[4/3] overflow-hidden"><Image src={work.image} alt={work.title} fill sizes="(max-width: 640px) 50vw, 300px" className="object-cover transition duration-500 group-hover:scale-105" style={{ objectPosition: work.imagePosition ?? "center" }} /></div>
+                  <p className="mt-3 font-serif text-xl">{work.title}</p><p className="mt-1 text-xs text-white/45">{work.year} · {work.medium}</p>
                 </button>
               ))}
             </div>
