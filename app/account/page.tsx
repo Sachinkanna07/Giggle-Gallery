@@ -1,7 +1,11 @@
 import Link from "next/link";
+import { desc, eq } from "drizzle-orm";
 import { auth } from "@/auth";
 import { EmailSettings } from "@/app/account/EmailSettings";
 import { GalleryShell } from "@/app/components/GalleryShell";
+import { getDb } from "@/db";
+import { artistProfiles, auctionBids, auctions, artworks, follows } from "@/db/schema";
+import { auctionsEnabled } from "@/lib/auctions/feature-flag";
 import { getIdentityOverview } from "@/lib/identity/service";
 import { getViewerState } from "@/lib/marketplace-data";
 
@@ -21,6 +25,22 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
   const accountState = identity?.disabled ? "DISABLED" : identity?.accountStatus ?? session.user.accountStatus;
   const googleConnected = identity?.providers.includes("google") ?? false;
   const primaryEmail = identity?.email ?? session.user.email ?? "";
+  const db = getDb();
+  const [followedArtists, bidRows] = await Promise.all([
+    db.select({ id: artistProfiles.id, slug: artistProfiles.slug, name: artistProfiles.displayName }).from(follows).innerJoin(artistProfiles, eq(follows.artistId, artistProfiles.id)).where(eq(follows.followerId, session.user.id)),
+    auctionsEnabled() ? db.select({ auctionId: auctions.id, title: artworks.title, status: auctions.status, current: auctions.currentBidPaise, winnerId: auctions.winnerId, ownBid: auctionBids.amountPaise }).from(auctionBids).innerJoin(auctions, eq(auctionBids.auctionId, auctions.id)).innerJoin(artworks, eq(auctions.artworkId, artworks.id)).where(eq(auctionBids.bidderId, session.user.id)).orderBy(desc(auctionBids.amountPaise)) : Promise.resolve([]),
+  ]);
+  const bidMap = new Map<string, (typeof bidRows)[number]>();
+  bidRows.forEach((row) => { if (!bidMap.has(row.auctionId)) bidMap.set(row.auctionId, row); });
+  const participationLabel = (auction: (typeof bidRows)[number]) => {
+    if (auction.status === "SOLD" && auction.winnerId === session.user.id) return "Completed";
+    if (auction.status === "PAYMENT_PENDING" && auction.winnerId === session.user.id) return "Won · payment required";
+    if (auction.status === "PAYMENT_EXPIRED" && auction.winnerId === session.user.id) return "Won · payment expired";
+    if (["SOLD", "UNSOLD", "PAYMENT_EXPIRED"].includes(auction.status)) return "Lost";
+    if (auction.status === "LIVE" && auction.ownBid === auction.current) return "Highest bidder";
+    if (auction.status === "LIVE" && auction.ownBid < (auction.current ?? 0n)) return "Outbid";
+    return auction.status.replaceAll("_", " ");
+  };
 
   return (
     <GalleryShell>
@@ -94,10 +114,15 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
             </div>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link href="/orders" className="button-outline">My orders</Link>
+              <Link href="/collections" className="button-outline">Favorites and collections</Link>
+              <Link href="/following" className="button-outline">Following artists</Link>
+              <Link href="/notifications" className="button-outline">Notifications</Link>
+              {auctionsEnabled() && <Link href="/auctions/won" className="button-outline">Auction payments</Link>}
               <Link href="/sell" className="button-outline">Seller profile</Link>
             </div>
           </div>
         </section>
+        <section className="mt-16 grid gap-6 lg:grid-cols-2"><div className="border border-white/10 p-7"><div className="flex items-center justify-between gap-4"><h2 className="font-serif text-3xl">Artists you follow</h2><Link href="/following" className="text-link text-sm">Manage</Link></div><ul className="mt-5 space-y-3">{followedArtists.map((artist) => <li key={artist.id}><Link className="underline underline-offset-4" href={`/artist/${artist.slug}`}>{artist.name}</Link></li>)}{!followedArtists.length && <li className="text-sm text-white/45">You have not followed an artist yet.</li>}</ul></div>{auctionsEnabled() && <div className="border border-white/10 p-7"><h2 className="font-serif text-3xl">Auctions you joined</h2><ul className="mt-5 space-y-3">{[...bidMap.values()].map((auction) => <li key={auction.auctionId}><Link className="underline underline-offset-4" href={`/auctions/${auction.auctionId}`}>{auction.title}</Link><p className="mt-1 text-sm text-white/50">{participationLabel(auction)} · Your highest ₹{Number(auction.ownBid) / 100} · Current ₹{Number(auction.current ?? auction.ownBid) / 100}</p></li>)}{!bidMap.size && <li className="text-sm text-white/45">You have not joined an auction yet.</li>}</ul></div>}</section>
       </main>
     </GalleryShell>
   );

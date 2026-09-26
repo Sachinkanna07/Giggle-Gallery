@@ -119,7 +119,17 @@ The app is deployed on Vercel and uses environment-scoped Auth.js, Neon, Blob, R
 - Removed fabricated analytics in favor of paid-only, database-derived metrics.
 - Unified browser and webhook payment completion behind idempotent inventory logic.
 - Treated external refund atomicity and mixed-seller fulfillment as explicit operational limitations rather than hiding them.
+- Kept a single-edition auction reservation separate from fixed-price stock, with row locks on both checkout and admin scheduling paths.
+- Reused the signed payment finalizer for winner checkout while requiring the winner, auction, bid, amount, deadline, order, and stock relationship.
+- Made artist following, favorites, authenticated view counts, bid counts, and notification badges derive from persisted records rather than fabricated engagement.
+- Used visible-tab polling for auctions while keeping the server clock and locked bid transaction authoritative.
+
+## Test-mode auction and social architecture
+
+Sellers create drafts without reserving inventory; admins schedule only eligible published single-stock work when no pending fixed-price payment conflicts. The scheduled auction reserves the artwork. Bids are append-only and accepted under an auction row lock. End-of-auction settlement persists one winner and a 24-hour payment obligation, with no reserve or runner-up behavior. Checkout obtains the winning amount from the database, not the browser. Expiry does not count as a sale; unresolved provider payments keep the artwork reserved until safe reconciliation. A dual feature flag and Razorpay test-key check keep this path off in unapproved environments.
+
+Public artist and artwork pages show database-backed follower, favorite, and published-work counts. Authenticated users can follow artists, save and like published artwork, and receive owner-scoped in-app notifications. Auction detail pages poll a private, no-store state endpoint while visible, and hide bidder identity from public responses.
 
 ## Current status and next step
 
-The codebase is locally validated and awaiting human production QA. No claim is made about user count, revenue, conversion, or paid-flow success. The next release step is to complete the no-payment QA checklist in `docs/GIGGLE_GALLERY_MVP_STATUS.md`; only then should a human perform the dedicated ₹1 Razorpay test-mode payment.
+The fixed-price marketplace is deployed; auction/social completion is code work subject to deployment and manual test-mode release gates. The production auction migration was verified through a read-only schema/journal check, but local checks do not prove a full provider or browser flow. Production auction flags remain off unless the Razorpay test key and all safety gates are verified. No claim is made about user count, revenue, conversion, or paid-flow success. The next release step is the checklist in `docs/GIGGLE_GALLERY_MVP_STATUS.md`, including the intentionally skipped ₹1 payment test only with human approval.

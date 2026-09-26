@@ -44,15 +44,16 @@ type Props = {
   user: { name?: string | null; email?: string | null } | null;
   databaseReady: boolean;
   initialFilters: Record<string, string | undefined>;
+  featuredAuctions: Array<{ id: string; title: string; status: string; end: string; currentBidPaise: string }>;
 };
 
-export function GalleryExperience({ initialArtworks, artists, viewer, user, databaseReady, initialFilters }: Props) {
+export function GalleryExperience({ initialArtworks, artists, viewer, user, databaseReady, initialFilters, featuredAuctions }: Props) {
   const router = useRouter();
   const [liked, setLiked] = useState<string[]>(viewer.likedIds);
   const [saved, setSaved] = useState<string[]>(viewer.savedIds);
   const [cart, setCart] = useState(viewer.cart);
   const [followed, setFollowed] = useState<string[]>(viewer.followedArtistIds);
-  const [preferences, setPreferences] = useState<string[]>(viewer.preferences.length ? viewer.preferences : ["Calm", "blue", "Minimalism"]);
+  const [preferences, setPreferences] = useState<string[]>(viewer.preferences);
   const [mood, setMood] = useState(initialFilters.mood ?? "All moods");
   const [style, setStyle] = useState(initialFilters.style ?? "All styles");
   const [category, setCategory] = useState(initialFilters.category ?? "All categories");
@@ -107,6 +108,7 @@ export function GalleryExperience({ initialArtworks, artists, viewer, user, data
   useEffect(() => {
     if (!databaseReady) return;
     const refresh = async () => {
+      if (document.hidden) return;
       try {
         const response = await fetch("/api/marketplace/live", { cache: "no-store" });
         if (!response.ok) return;
@@ -185,7 +187,7 @@ export function GalleryExperience({ initialArtworks, artists, viewer, user, data
     startTransition(async () => {
       const result = kind === "like" ? await toggleLikeAction(id) : await toggleSaveAction(id);
       if (!result.ok) { setter(current); toast.error(result.error); }
-      else toast(nextActive ? (kind === "like" ? "Artwork liked" : "Artwork saved") : "Removed");
+      else { setResults((rows) => rows.map((artwork) => artwork.id === id && kind === "like" ? { ...artwork, likes: Math.max(0, artwork.likes + (nextActive ? 1 : -1)) } : artwork)); toast(nextActive ? (kind === "like" ? "Artwork liked" : "Artwork saved") : "Removed"); }
     });
   }
   const toggleLike = (id: string) => runToggle("like", id);
@@ -299,9 +301,10 @@ export function GalleryExperience({ initialArtworks, artists, viewer, user, data
         </div>
       </section>
 
+      {featuredAuctions.length > 0 && <section className="border-t border-white/10 py-20"><div className="section-shell"><div className="flex flex-wrap items-end justify-between gap-5"><div><p className="eyebrow">Test auctions</p><h2 className="section-title mt-5">Bidding <i>now and soon.</i></h2></div><Link href="/auctions" className="button-outline">All auctions</Link></div><div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-4">{featuredAuctions.map((auction) => <Link key={auction.id} href={`/auctions/${auction.id}`} className="border border-white/10 p-6 hover:border-white/35"><p className="text-xs text-white/45">{auction.status} · ends {new Date(auction.end).toLocaleString("en-IN")}</p><h3 className="mt-4 font-serif text-2xl">{auction.title}</h3><p className="mt-5 text-sm text-white/65">Highest bid ₹{(Number(auction.currentBidPaise) / 100).toLocaleString("en-IN")}</p></Link>)}</div></div></section>}
       <section id="artists" className="py-24 lg:py-36"><div className="section-shell"><p className="eyebrow">The people behind the work</p><h2 className="section-title mt-6">Meet the minds<br /><i>behind the art.</i></h2><div className="mt-12 grid gap-5 md:grid-cols-3">{artists.map((artist, index) => <button key={artist.id} onClick={() => setArtistId(artist.id)} className="artist-card group relative aspect-[3/4] overflow-hidden text-left"><Image src={artist.image} alt={`Work by ${artist.name}`} fill sizes="(max-width: 768px) 100vw, 33vw" className="object-cover transition duration-700 group-hover:scale-105" style={{ objectPosition: index === 0 ? "65% center" : "center" }} /><div className="absolute inset-0 bg-gradient-to-t from-black via-black/5 to-transparent" /><div className="absolute inset-x-0 bottom-0 p-6"><p className="text-xs uppercase tracking-[.13em] text-white/50">{artist.location} · {artist.discipline}</p><h3 className="mt-2 font-serif text-4xl tracking-[-.04em]">{artist.name}</h3><div className="mt-4 flex justify-between text-xs text-white/55"><span>{artist.followers} followers</span><span>{artist.works} works</span></div></div></button>)}</div></div></section>
 
-      <section id="profile" className="border-y border-white/10 bg-[#0b0f16] py-24 lg:py-32"><div className="section-shell grid gap-12 lg:grid-cols-[.9fr_1.1fr] lg:items-center"><div><p className="eyebrow">Your art personality</p><h2 className="section-title mt-6"><i>{personalized ? "Dreamy Minimalist" : "Quiet Futurist"}</i></h2><p className="mt-6 max-w-md text-base leading-relaxed text-white/50">Your taste is getting interesting. These signals update as you explore, save and follow.</p><button onClick={() => setDiscoverOpen(true)} className="text-link mt-7">Tune my profile <ArrowRight size={16} /></button></div><div className="taste-panel"><div className="mb-8 flex items-end justify-between"><span className="text-xs uppercase tracking-[.15em] text-white/40">Taste confidence</span><span className="font-serif text-5xl">78%</span></div>{[[preferences[3] || "Minimal", 72], [preferences[0] || "Dreamy", 64], [preferences[1] || "Abstract", 58], [preferences[2] || "Nature", 43]].map(([label, value]) => <div key={String(label)} className="mb-5"><div className="mb-2 flex justify-between text-sm"><span>{label}</span><span className="text-white/35">{value}%</span></div><div className="h-1 overflow-hidden rounded-full bg-white/10"><div className="h-full bg-cobalt-light" style={{ width: `${value}%` }} /></div></div>)}</div></div></section>
+      <section id="profile" className="border-y border-white/10 bg-[#0b0f16] py-24 lg:py-32"><div className="section-shell grid gap-12 lg:grid-cols-[.9fr_1.1fr] lg:items-center"><div><p className="eyebrow">Your art personality</p><h2 className="section-title mt-6"><i>{preferences[0] ? `${preferences[0]} Explorer` : "Curious Collector"}</i></h2><p className="mt-6 max-w-md text-base leading-relaxed text-white/50">Your selected preferences help shape the gallery you see.</p><button onClick={() => setDiscoverOpen(true)} className="text-link mt-7">Tune my profile <ArrowRight size={16} /></button></div><div className="taste-panel"><p className="text-xs uppercase tracking-[.15em] text-white/40">Your saved preferences</p><div className="mt-6 flex flex-wrap gap-3">{preferences.length ? preferences.map((item) => <span key={item} className="rounded-full border border-white/20 px-4 py-2 text-sm">{item}</span>) : <p className="text-sm text-white/45">Choose the moods and styles you enjoy to personalize discovery.</p>}</div></div></div></section>
 
       <section id="collections" className="py-24 lg:py-32"><div className="section-shell"><div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end"><div><p className="eyebrow">Your little museum</p><h2 className="section-title mt-6">My Calm Collection.</h2></div><span className="text-sm text-white/40">{savedItems.length} saved {savedItems.length === 1 ? "work" : "works"}</span></div>{savedItems.length ? <div className="mt-10 flex snap-x gap-4 overflow-x-auto pb-4">{savedItems.map((artwork) => <button key={artwork.id} onClick={() => setDetail(artwork)} className="group min-w-[76vw] snap-start text-left sm:min-w-[340px]"><div className="relative aspect-[4/3] overflow-hidden"><Image src={artwork.image} alt={artwork.title} fill sizes="(max-width: 640px) 76vw, 340px" className="object-cover transition duration-500 group-hover:scale-105" style={{ objectPosition: artwork.imagePosition ?? "center" }} /></div><p className="mt-3 font-serif text-2xl">{artwork.title}</p><p className="mt-1 text-xs text-white/45">{artwork.artist}</p></button>)}</div> : <div className="mt-10 grid min-h-[260px] place-items-center border border-white/10 bg-white/[.02] text-center"><div><Heart className="mx-auto text-white/20" size={32} /><h3 className="mt-5 font-serif text-3xl">Your wall is still waiting.</h3><p className="mt-2 text-sm text-white/40">Save artwork to build your first little museum.</p><a href="#gallery" className="mt-6 inline-flex rounded-full border border-white/20 px-5 py-3 text-sm">Explore artwork</a></div></div>}</div></section>
 

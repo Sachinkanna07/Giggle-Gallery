@@ -1,0 +1,5 @@
+.env*
+.kilo/
+.next/
+node_modules/
+scratch/

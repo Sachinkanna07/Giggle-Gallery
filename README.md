@@ -10,6 +10,8 @@ Giggle Gallery is a cinematic art marketplace built with Next.js, Auth.js, Drizz
 - Seller application, guarded artwork upload, pending review, inventory, paid-only revenue, seller-owned paid orders, and forward-only fulfillment updates.
 - Admin seller/artwork moderation plus read-only order, payment, and fulfillment oversight. Admin tools cannot mark an unpaid order paid.
 - Razorpay signature/webhook verification, duplicate-event protection, transactional stock updates, payout records, and inventory-conflict refunds.
+- Feature-flagged, Razorpay-test-key-only single-edition auctions: seller drafts, admin scheduling, inventory reservation, locked bids, winner checkout, expiry, and visible-tab live polling.
+- Persisted artist following, real follower/favorite/bid/view counts, buyer auction participation, and in-app owner-scoped notifications.
 
 ## Roles
 
@@ -20,6 +22,8 @@ Giggle Gallery is a cinematic art marketplace built with Next.js, Auth.js, Drizz
 ## Architecture
 
 Next.js App Router renders the public and authenticated experiences. Auth.js establishes identity while server actions and route handlers re-check active account and role state. Drizzle accesses Neon PostgreSQL for marketplace state. Vercel Blob client uploads use short-lived seller-owned intents. Razorpay creates provider orders and reports signed browser/webhook events; one transactional finalizer owns payment, inventory, payout, cart, and notification mutations. Resend is used for separately verified contact-email delivery.
+
+Auctions share the payment finalizer but cannot use its fixed-price branch. Admin scheduling locks the artwork and blocks pending fixed-price orders; fixed-price checkout locks the same artwork and requires `AVAILABLE`. Winning bids and payment deadlines are persisted server-side. A winner order can consume `RESERVED` inventory only after the finalizer verifies the exact auction, highest bid, winner, order/payment, deadline, and stock relationship. No automatic runner-up or reserve-price rule exists. Closing and expiry are idempotent via lazy reads/actions and, when securely configured, a protected daily Cron on Vercel Hobby. Public auction pages poll while visible; the browser clock never decides bid acceptance.
 
 ## Local development
 
@@ -51,6 +55,9 @@ Configure these in each deployed environment. Only `NEXT_PUBLIC_APP_URL` is safe
 | `EMAIL_FROM` | Verified sender, for example `Giggle Gallery <verify@YOUR_DOMAIN>` |
 | `RESEND_API_KEY` | Server-only Resend API key |
 | `GST_RATE_BPS` | Optional GST rate in basis points; defaults to `0` |
+| `AUCTIONS_ENABLED` | Set `true` only after auction release gates; default off |
+| `AUCTIONS_TEST_MODE` | Must be `true` with a `rzp_test_` Razorpay key to enable auctions |
+| `CRON_SECRET` | Server-only bearer secret for protected auction settlement Cron |
 
 Never commit credentials. `.env.example` contains names and environment guidance only.
 
@@ -97,6 +104,8 @@ Provision Neon through the Vercel Marketplace and use its pooled `DATABASE_URL`.
 
 Generate a migration after schema changes with `npm run db:generate`. Apply migrations with `npm run db:migrate`. Seed the starter catalog with `npm run db:seed`.
 
+The additive auction migration is `drizzle/0005_tiny_firebrand.sql`. Verify the required tables and latest Drizzle journal entry with `npm run db:verify`; it is read-only and prints no credentials. If `.env.local` points at production, do not run migration or seed without explicit migration review and a backup plan. Never reset marketplace tables or edit an applied migration.
+
 Payment attempts and webhook events have separate tables. Checkout math uses integer paise in application code, while existing money columns remain fixed-precision SQL numeric values. Migrating every persisted money column to integer minor units is a later, deliberate data migration.
 
 ## Artwork storage
@@ -128,16 +137,19 @@ Payment finalization updates payment, attempt, order, inventory, payouts, cart, 
 - Admin order oversight is intentionally read-only and limited to recent status data; reconciliation and refund tooling are deferred.
 - Search is appropriate for the current MVP catalog but still loads the published catalog before in-memory filtering; database-native search/pagination is future scale work.
 - Abandoned checkout orders are retained for history; automatic expiry/cleanup is not implemented.
+- Auction flags must stay off until a production Razorpay **test** key is independently verified, the deployed migration and manual test auction pass, and the operator explicitly approves enablement. Daily Hobby Cron cannot guarantee a one-to-five-minute close for an inactive auction; lazy settlement handles active reads.
+- An expired auction with an unresolved provider payment stays reserved until payment failure/refund is reconciled. Reopening it early could double-sell the artwork.
 
 ## Deployment checklist
 
-1. Review and apply the generated migration to a backed-up staging database.
+1. Review the additive auction migration, verify staging and production journals with `npm run db:verify`, and apply only missing migrations through the approved Drizzle path. Never reset or reseed production.
 2. Run `npm ci`, `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`.
 3. Configure every required variable in Vercel Production with production-scoped values.
 4. Confirm the production Google callback and Razorpay webhook URL and signing secret.
 5. Deploy to Preview, complete the staging smoke tests, then promote the verified build.
 6. Verify headers, database connectivity, Blob callbacks, webhook delivery/replay, and an owned test-mode checkout.
 7. Enable monitoring for application errors, webhook failures, refund reconciliation, and database health.
+8. Keep auctions off until the release gates in `docs/GIGGLE_GALLERY_MVP_STATUS.md` pass. Confirm `RAZORPAY_KEY_ID` is test-mode without printing it; configure `CRON_SECRET` securely if using the protected daily settlement route.
 
 ## Rollback
 
@@ -151,6 +163,8 @@ npm run typecheck
 npm test
 npm run build
 npm audit --audit-level=low
+git diff --check
+npm run db:verify
 ```
 
 GitHub Actions runs install, lint, typecheck, unit tests, and build for pushes and pull requests using placeholders only; it never charges real money.

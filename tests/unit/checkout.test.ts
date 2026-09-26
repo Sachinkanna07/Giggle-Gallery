@@ -31,6 +31,7 @@ describe("Checkout Flow", () => {
 
   function setupDb(cartRows: Record<string, unknown>[]) {
     const tx = {
+      select: vi.fn().mockReturnValue({ from: () => ({ where: () => ({ orderBy: () => ({ for: () => Promise.resolve(cartRows.map((row) => ({ id: row.artworkId, price: row.price, artistId: row.artistId, currency: row.currency, type: row.type, status: row.status, availability: row.availability, stock: row.stock }))) }) }) }) }),
       insert: vi.fn().mockReturnValue({ values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: "mock-id" }]) }) }),
       update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
     };
@@ -79,6 +80,16 @@ describe("Checkout Flow", () => {
     setupDb([{ status: "PUBLISHED", availability: "AVAILABLE", quantity: 2, stock: 1, currency: "INR" }]);
     const res = await beginCheckout(validAddress);
     expect(res).toEqual({ ok: false, error: "One or more artworks are no longer available in that quantity." });
+  });
+
+  it("blocks fixed-price checkout when scheduling reserves artwork before the locked read", async () => {
+    mocks.requireUser.mockResolvedValue({ id: "user1" });
+    const rows = [{ artworkId: "art1", price: "100.00", status: "PUBLISHED", availability: "AVAILABLE", quantity: 1, stock: 1, currency: "INR", type: "DIGITAL" }];
+    const { tx } = setupDb(rows);
+    tx.select.mockReturnValue({ from: () => ({ where: () => ({ orderBy: () => ({ for: () => Promise.resolve([{ id: "art1", price: "100.00", status: "PUBLISHED", availability: "RESERVED", stock: 1 }]) }) }) }) });
+    const result = await beginCheckout(validAddress);
+    expect(result).toEqual({ ok: false, error: "An artwork changed availability or price. Review your cart and try again." });
+    expect(tx.insert).not.toHaveBeenCalled();
   });
 
   it("order creation uses server-side price and creates Razorpay order", async () => {

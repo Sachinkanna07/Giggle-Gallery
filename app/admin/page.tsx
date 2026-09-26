@@ -3,10 +3,10 @@ import Image from "next/image";
 import { auth } from "@/auth";
 import { GalleryShell } from "@/app/components/GalleryShell";
 import { reviewSellerApplicationForm, reviewArtworkForm, unpublishArtworkForm } from "@/app/actions/marketplace";
-import { scheduleAuctionForm } from "@/app/actions/auctions";
+import { CancelAuctionButton, ScheduleAuctionButton } from "@/app/components/AuctionManagementForms";
 import { formatPrice } from "@/app/data";
 import { getDb } from "@/db";
-import { artistApplications, artistProfiles, auctions, artworks, artworkImages, orders, users } from "@/db/schema";
+import { artistApplications, artistProfiles, auctionBids, auctionPaymentAttempts, auctions, artworks, artworkImages, orders, users } from "@/db/schema";
 import { auctionsEnabled } from "@/lib/auctions/feature-flag";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +17,9 @@ export default async function AdminPage() {
 
   const db = getDb();
   const auctionReviewRows = auctionsEnabled() ? await db.select({ id: auctions.id, title: artworks.title, startsAt: auctions.startsAt, endsAt: auctions.endsAt }).from(auctions).innerJoin(artworks, eq(auctions.artworkId, artworks.id)).where(eq(auctions.status, "DRAFT")).orderBy(desc(auctions.createdAt)) : [];
+  const auctionOverviewRows = auctionsEnabled() ? await db.select({ id: auctions.id, title: artworks.title, status: auctions.status, startsAt: auctions.startsAt, endsAt: auctions.endsAt, paymentStatus: auctionPaymentAttempts.status }).from(auctions).innerJoin(artworks, eq(auctions.artworkId, artworks.id)).leftJoin(auctionPaymentAttempts, eq(auctionPaymentAttempts.auctionId, auctions.id)).orderBy(desc(auctions.createdAt)).limit(50) : [];
+  const bidCounts = auctionsEnabled() ? await db.select({ auctionId: auctionBids.auctionId, value: count() }).from(auctionBids).groupBy(auctionBids.auctionId) : [];
+  const bidCountByAuction = new Map(bidCounts.map((row) => [row.auctionId, Number(row.value)]));
   const [applications, pendingRows, publishedRows, userCountRows, publishedCountRows, rejectedCountRows, recentOrders] = await Promise.all([
     db.select().from(artistApplications).orderBy(desc(artistApplications.createdAt)),
     db
@@ -87,7 +90,8 @@ export default async function AdminPage() {
           {[["Users", Number(userCountRows[0]?.value ?? 0)], ["Published artworks", Number(publishedCountRows[0]?.value ?? 0)], ["Rejected artworks", Number(rejectedCountRows[0]?.value ?? 0)], ["Recent orders", recentOrders.length]].map(([label, value]) => <div key={String(label)} className="bg-ink p-6"><p className="text-sm text-white/40">{label}</p><p className="mt-2 font-serif text-4xl">{value}</p></div>)}
         </section>
 
-        {auctionsEnabled() && <section className="mt-16"><h2 className="font-serif text-4xl">Auction <i>approval</i></h2><p className="mt-2 text-sm text-white/45">Scheduling reserves a single-stock artwork and is blocked by pending fixed-price payment attempts.</p><div className="mt-6 space-y-3">{auctionReviewRows.map((auction) => <article key={auction.id} className="flex flex-wrap items-center justify-between gap-4 border border-white/10 p-5"><div><h3 className="font-serif text-2xl">{auction.title}</h3><p className="text-sm text-white/45">{auction.startsAt.toLocaleString("en-IN")} to {auction.endsAt.toLocaleString("en-IN")}</p></div><form action={scheduleAuctionForm}><input type="hidden" name="auctionId" value={auction.id} /><button className="button-light">Schedule and reserve</button></form></article>)}{!auctionReviewRows.length && <p className="text-white/45">No auction drafts await review.</p>}</div></section>}
+        {auctionsEnabled() && <section className="mt-16"><h2 className="font-serif text-4xl">Auction <i>approval</i></h2><p className="mt-2 text-sm text-white/45">Scheduling reserves a single-stock artwork and is blocked by pending fixed-price payment attempts.</p><div className="mt-6 space-y-3">{auctionReviewRows.map((auction) => <article key={auction.id} className="flex flex-wrap items-center justify-between gap-4 border border-white/10 p-5"><div><h3 className="font-serif text-2xl">{auction.title}</h3><p className="text-sm text-white/45">{auction.startsAt.toLocaleString("en-IN")} to {auction.endsAt.toLocaleString("en-IN")}</p></div><div className="flex flex-wrap items-start gap-3"><ScheduleAuctionButton auctionId={auction.id} /><CancelAuctionButton auctionId={auction.id} /></div></article>)}{!auctionReviewRows.length && <p className="text-white/45">No auction drafts await review.</p>}</div></section>}
+        {auctionsEnabled() && <section className="mt-16"><h2 className="font-serif text-4xl">Auction <i>oversight</i></h2><div className="mt-6 overflow-x-auto border border-white/10"><table className="w-full min-w-[760px] text-left text-sm"><thead className="border-b border-white/10 text-white/45"><tr><th className="p-4">Artwork</th><th className="p-4">State</th><th className="p-4">Bids</th><th className="p-4">Payment</th><th className="p-4">Ends</th><th className="p-4">Control</th></tr></thead><tbody>{auctionOverviewRows.map((auction) => <tr key={auction.id} className="border-b border-white/10"><td className="p-4"><a href={`/auctions/${auction.id}`} className="underline underline-offset-4">{auction.title}</a></td><td className="p-4">{auction.status.replaceAll("_", " ")}</td><td className="p-4">{bidCountByAuction.get(auction.id) ?? 0}</td><td className="p-4">{auction.paymentStatus ?? "—"}</td><td className="p-4">{auction.endsAt.toLocaleString("en-IN")}</td><td className="p-4">{(auction.status === "DRAFT" || auction.status === "SCHEDULED") && <CancelAuctionButton auctionId={auction.id} />}</td></tr>)}</tbody></table>{!auctionOverviewRows.length && <p className="p-6 text-white/45">No auction records yet.</p>}</div></section>}
 
         {/* ── Artwork Review ────────────────────────────────────────────── */}
         <section id="artwork-review" className="mt-16">

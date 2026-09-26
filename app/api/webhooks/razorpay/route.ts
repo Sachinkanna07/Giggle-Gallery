@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/db";
-import { orders, paymentAttempts, payments } from "@/db/schema";
+import { paymentAttempts, payments } from "@/db/schema";
 import { finalizeRazorpayPayment } from "@/lib/payments/finalize";
 import { verifyRazorpayWebhook } from "@/lib/razorpay";
 import { rateLimitRequest, rateLimitResponse } from "@/lib/security/request";
@@ -55,9 +55,9 @@ export async function POST(request: Request) {
       await getDb().transaction(async (tx) => {
         const [record] = await tx.select({ orderId: payments.orderId }).from(payments).where(and(eq(payments.providerOrderId, payment.order_id!), eq(payments.status, "PENDING"))).limit(1).for("update");
         if (!record) return;
-        await tx.update(payments).set({ status: "FAILED", failureReason: reason, updatedAt: new Date() }).where(eq(payments.providerOrderId, payment.order_id!));
-        await tx.update(paymentAttempts).set({ status: "FAILED", failureCode: payment.error_code, failureReason: reason, updatedAt: new Date() }).where(eq(paymentAttempts.providerOrderId, payment.order_id!));
-        await tx.update(orders).set({ paymentStatus: "FAILED", status: "CANCELLED", updatedAt: new Date() }).where(eq(orders.id, record.orderId));
+        // Razorpay may accept another payment against the same provider order.
+        // A single failed attempt does not cancel a still-payable order.
+        await tx.update(paymentAttempts).set({ failureCode: payment.error_code, failureReason: reason, updatedAt: new Date() }).where(eq(paymentAttempts.providerOrderId, payment.order_id!));
       });
     }
     await markWebhookEventProcessed("RAZORPAY", identity.providerEventId);

@@ -1,8 +1,12 @@
 import Link from "next/link";
+import { count, eq } from "drizzle-orm";
 import { auth } from "@/auth";
 import { updateSellerOrderStatusForm } from "@/app/actions/marketplace";
 import { GalleryShell } from "@/app/components/GalleryShell";
 import { formatPrice } from "@/app/data";
+import { getDb } from "@/db";
+import { auctions, artworks, follows, likes } from "@/db/schema";
+import { auctionsEnabled } from "@/lib/auctions/feature-flag";
 import { getSellerOrders, getSellerSnapshot } from "@/lib/marketplace-data";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +21,14 @@ export default async function SellerDashboardPage() {
     return <GalleryShell><main className="section-shell py-24"><p className="eyebrow">Seller dashboard</p><h1 className="section-title mt-6">Your studio is <i>almost ready.</i></h1><p className="mt-6 max-w-xl text-white/50">Selling tools unlock after your artist application is approved.</p><Link href="/sell" className="button-light mt-8">View application</Link></main></GalleryShell>;
   }
 
+  const db = getDb();
+  const [followerRows, favoriteRows, auctionRows] = await Promise.all([
+    db.select({ value: count() }).from(follows).where(eq(follows.artistId, snapshot.artist.id)),
+    db.select({ value: count() }).from(likes).innerJoin(artworks, eq(likes.artworkId, artworks.id)).where(eq(artworks.artistId, snapshot.artist.id)),
+    auctionsEnabled() ? db.select({ status: auctions.status, value: count() }).from(auctions).where(eq(auctions.sellerId, snapshot.artist.id)).groupBy(auctions.status) : Promise.resolve([]),
+  ]);
+  const auctionCount = (statuses: Array<(typeof auctions.$inferSelect)["status"]>) => auctionRows.filter((row) => statuses.includes(row.status)).reduce((sum, row) => sum + Number(row.value), 0);
+
   const revenue = snapshot.sales.reduce((sum, sale) => sum + Number(sale.sellerEarnings), 0);
   const statusCount = (status: string) => snapshot.artworks.filter((item) => item.status === status).length;
   const lowStock = snapshot.artworks.filter((item) => item.status === "PUBLISHED" && item.stock <= 1).length;
@@ -27,12 +39,15 @@ export default async function SellerDashboardPage() {
     ["Pending review", String(statusCount("PENDING_REVIEW"))],
     ["Rejected", String(statusCount("REJECTED"))],
     ["Low / out of stock", String(lowStock)],
+    ["Followers", String(followerRows[0]?.value ?? 0)],
+    ["Favorites received", String(favoriteRows[0]?.value ?? 0)],
+    ...(auctionsEnabled() ? [["Active auctions", String(auctionCount(["SCHEDULED", "LIVE", "PAYMENT_PENDING"]))], ["Completed auctions", String(auctionCount(["SOLD", "UNSOLD", "PAYMENT_EXPIRED"]))]] : []),
   ];
 
   return (
     <GalleryShell>
       <main className="section-shell py-16 lg:py-24">
-        <div className="flex flex-col justify-between gap-6 sm:flex-row sm:items-end"><div><p className="eyebrow">Seller dashboard</p><h1 className="mt-5 font-serif text-6xl tracking-[-.05em]">Welcome back, {snapshot.artist.displayName}.</h1></div><Link href="/seller/artworks/new" className="button-light">Add artwork</Link></div>
+        <div className="flex flex-col justify-between gap-6 sm:flex-row sm:items-end"><div><p className="eyebrow">Seller dashboard</p><h1 className="mt-5 font-serif text-5xl tracking-[-.05em] sm:text-6xl">Welcome back, {snapshot.artist.displayName}.</h1></div><div className="flex flex-wrap gap-3"><Link href="/seller/artworks/new" className="button-light">Add artwork</Link>{auctionsEnabled() && <Link href="/seller/auctions" className="button-outline">Auction studio</Link>}</div></div>
         <nav className="mt-10 flex gap-6 overflow-x-auto border-y border-white/10 py-4 text-sm text-white/55" aria-label="Seller sections"><a href="#overview">Overview</a><a href="#my-artwork">My artwork</a><a href="#orders">Orders</a><a href="#analytics">Analytics</a><a href="#payouts">Payouts</a></nav>
 
         <section id="overview" className="mt-10 grid gap-px bg-white/10 sm:grid-cols-2 lg:grid-cols-3">{metrics.map(([label, value]) => <div key={label} className="bg-ink p-7"><p className="text-sm text-white/40">{label}</p><p className="mt-3 font-serif text-4xl">{value}</p></div>)}</section>

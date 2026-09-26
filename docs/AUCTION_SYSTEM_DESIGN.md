@@ -1,85 +1,35 @@
-# Auction System Design — Planning Only
+# Auction system — implemented test-mode design
 
-Status: **not implemented**. This document is an architectural gate, not authorization to add auction tables, routes, jobs, UI, or payment behavior.
+This document describes the implemented, feature-flagged auction path. It does not authorize live-money use. Production stays off unless the migration, deploy, Razorpay test credentials, and manual QA are verified.
 
-## 1. Goals
+## Scope and invariants
 
-Add trustworthy timed auctions for approved, published artwork while preserving Giggle Gallery’s server-side roles, moderation, inventory, payment verification, and order ownership rules. Bids must be append-only evidence; the server must determine eligibility, amount, time, and winner.
+- Only a seller-owned, published, available INR artwork with stock exactly one can be drafted. Drafts do not reserve stock.
+- An administrator schedules a draft. The scheduling transaction locks the artwork, rejects pending fixed-price orders, and changes availability to `RESERVED`. A partial unique index permits at most one `SCHEDULED`, `LIVE`, or `PAYMENT_PENDING` auction per artwork.
+- Fixed-price cart and checkout require `AVAILABLE`. Checkout locks artwork rows and creates a pending internal order before calling Razorpay, so scheduling sees a conflicting pending order. Scheduling never cancels that order.
+- A bidder must be an active authenticated non-owner. The auction row is locked before checking server time, current bid, minimum increment, reservation, and idempotency key. Bidder identities are not in the public state response.
+- Accepted bids are append-only. The current bid and event are updated in the same transaction. A valid bid in the final two minutes extends the persisted end time by two minutes while the auction row is locked; an idempotent retry cannot extend it twice. The winner is the persisted highest bid at close; no reserve price or runner-up fallback exists.
 
-## 2. Explicitly not part of the current MVP
+## State and finalization
 
-Live auctions, proxy bidding, anti-sniping extensions, multi-currency settlement, auction houses, buyer premiums, KYC, escrow, automatic refunds, disputes, and payout automation remain out of scope until legal, provider, and operational rules are approved.
+`DRAFT` → `SCHEDULED` → `LIVE` → `PAYMENT_PENDING` → `SOLD` or `PAYMENT_EXPIRED`. An auction without bids becomes `UNSOLD` and releases the reservation. An expired winner cannot pay or bid again. The winning bidder gets 24 hours from server-side winner selection to complete test-mode payment.
 
-## 3. Proposed domain and schema
+`settleAuctionIfDue` locks the auction and applies transitions idempotently. Reads and bid actions invoke lazy settlement. `/api/auctions/settle` provides a protected GET for a daily Vercel Cron when `CRON_SECRET` is configured. Hobby Cron cannot provide a one-to-five-minute close cadence; active-page lazy settlement does. A scheduled auction can close late if no request occurs between daily runs; the 24-hour window starts when it is settled. This is an operational limitation, not a claim of real-time scheduling.
 
-- `auctions`: artwork, seller, status (`DRAFT`, `SCHEDULED`, `LIVE`, `ENDED`, `CANCELLED`, `PAYMENT_PENDING`, `SOLD`, `UNSOLD`), start/end timestamps, reserve, opening/minimum increment, currency, winner, winning bid, version, timestamps.
-- `auction_bids`: auction, bidder, amount, accepted server timestamp, idempotency key, request metadata suitable for fraud review; bids are never edited.
-- `auction_events`: append-only state transitions and actor/reason metadata.
-- `auction_payment_attempts`: winner order/payment references, deadline, state, attempts, reconciliation timestamps.
-- Reuse existing artwork, orders, order items, payments, payouts, notifications, and users only through explicit foreign keys and lifecycle rules.
+The winner's checkout derives the subtotal from `winningBidPaise`, computes shipping and GST on the server, and binds one Razorpay provider order to one internal order and `auction_payment_attempts` row. External order creation occurs before the database transaction; an orphaned provider order on a losing race is unusable. A retry returns the already-bound provider order.
 
-Money should use integer minor units or an exact numeric type consistently. Store all timestamps in UTC. Add unique constraints for idempotency keys and the one active auction allowed per artwork.
+The shared payment finalizer requires signed browser verification or a signed webhook. For auction payment it additionally checks winner identity, highest bid, auction/attempt/order/payment relationships, amount/currency, deadline, reserved artwork ownership, stock one, and exact one-item order. Only that explicit branch can consume reserved artwork. Fixed-price finalization still requires `AVAILABLE`. The transaction marks payment, order, stock, payout record, auction, and notifications together. Duplicate finalization does not decrement stock again.
 
-## 4. State machine
+At payment expiry, the auction becomes `PAYMENT_EXPIRED` and no seller revenue is counted. An obligation without a provider order becomes `EXPIRED` and releases only its own still-valid reservation. If a provider payment remains in `CREATED`/`PENDING`, the obligation and artwork stay pending/reserved until a verified late capture is refunded or another verified terminal reconciliation makes release safe; releasing while late authorization is possible would risk double sale. There is no automatic second-highest award.
 
-Only admin-approved transitions are allowed: `DRAFT → SCHEDULED → LIVE → ENDED → PAYMENT_PENDING → SOLD`, with `UNSOLD` for no acceptable winner and narrowly defined `CANCELLED` paths before valid bidding. Time alone does not authorize arbitrary transitions; an idempotent finalizer applies them.
+## Deployment gates and limits
 
-## 5. Server actions and endpoints
+- `AUCTIONS_ENABLED=true` and `AUCTIONS_TEST_MODE=true` are both required, along with a Razorpay key ID beginning `rzp_test_`; otherwise auction code stays off.
+- `CRON_SECRET` is server-only and required for protected scheduled settlement. Never put it in a URL or commit it. Without it, the cron request is rejected and lazy settlement remains available while auction pages/actions are used.
+- Apply `drizzle/0005_tiny_firebrand.sql` through Drizzle only after review. `npm run db:verify` checks required tables and migration journal without printing credentials. Never reset existing tables or edit an already-applied migration.
+- Test-only auctions are not evidence that arbitrary seller payouts, chargebacks, provider refunds, dispute handling, KYC, anti-fraud controls, or live-money operations are complete. External Razorpay refund and DB status are not one atomic operation; reconcile any failed refund or webhook before releasing stock.
+- Public auction state is polled every five seconds only while visible. The countdown is advisory; all acceptance and expiry checks use server time.
 
-- Admin/seller draft creation, with ownership and role checks.
-- Admin schedule/publish/cancel controls.
-- Read-only public auction detail and paginated bid history with bidder masking.
-- Authenticated `placeBid` endpoint/action with idempotency key.
-- Internal finalization job endpoint authenticated independently of browser sessions.
-- Winner payment initiation that derives amount and winner from auction state.
-- Admin reconciliation endpoint for stuck finalization/payment states.
+## Verification
 
-## 6. Bid validation
-
-Require an active account, verified contact policy, non-owner bidder, `LIVE` server state, server time before end, supported currency, exact integer amount, minimum increment, and optional maximum/risk rules. Never accept bidder ID, seller ID, current price, or auction timing from the client.
-
-## 7. Concurrency and race handling
-
-Place each bid inside a database transaction that locks or conditionally updates the auction version/current price. Insert the accepted bid and update the leader atomically. A stale competing bid must retry against the new minimum or fail cleanly. Test equal bids, end-time races, retry duplication, and two-region concurrency. UI countdowns are advisory; server time is authoritative.
-
-## 8. Idempotency
-
-Every bid, finalization run, order creation, payment callback, webhook, notification, and payout intent needs a stable idempotency key and unique database constraint. Replays must return the existing result without repeating inventory or money effects.
-
-## 9. Payment integration
-
-The winner receives a short payment window and a server-created Razorpay order for the exact winning amount plus explicitly approved fees. Payment is confirmed only by verified signature/webhook. Auction payment code should call the existing hardened finalization boundary rather than create a second looser path.
-
-## 10. Auction finalization
-
-An idempotent scheduled worker closes ended auctions, selects the highest valid bid under transaction protection, verifies reserve rules, creates one winner obligation/order, and emits notifications. Repeated runs must be harmless. A missed schedule must be recoverable by reconciliation without changing the winner.
-
-## 11. Winner default and fallback policy
-
-Do not automatically charge stored credentials or silently promote the next bidder. Define payment deadline, reminders, default status, penalties, seller/admin decision, and whether re-offering to the next bidder is legally/product acceptable before implementation.
-
-## 12. Seller and admin controls
-
-Sellers may draft only for their own eligible artwork. Admin approval is required to schedule. Once the first valid bid exists, reserve, currency, artwork, start/end time, and increment are immutable. Cancellation after bidding requires an admin reason, audit event, bidder notification, and policy-approved conditions.
-
-## 13. Notifications
-
-Plan in-app and email events for scheduled/live, bid accepted, outbid, ending soon, won/lost, payment deadline, payment confirmed/failed, cancelled, and admin intervention. Notifications are derived from committed events and must not determine state.
-
-## 14. Security and abuse controls
-
-Add durable rate limits, CSRF/origin protections appropriate to the action mechanism, bot/risk monitoring, self-dealing detection, bidder privacy, log redaction, account suspension enforcement, and audit retention. KYC and jurisdiction rules require legal/provider review before higher-value auctions.
-
-## 15. Automated tests
-
-Cover role and ownership denial, unpublished/ineligible artwork, amount boundaries, stale/equal concurrent bids, last-millisecond bids, idempotent retries, clock handling, reserve met/unmet, cancellation restrictions, deterministic winner, duplicate finalizer, duplicate payment webhook, failed payment, stock exactly once, order ownership, notification dedupe, and rollback/reconciliation paths.
-
-## 16. Manual production test checklist
-
-Use feature-flagged test accounts and a low-value test-mode artwork. Verify two independent bidders, simultaneous bids, masked history, outbid messaging, server-authoritative close, deterministic winner, exact Razorpay amount, winner-only order access, duplicate webhook/finalizer safety, one stock decrement, seller revenue/payout intent, failed-payment recovery, admin audit trail, and rollback. Do not use live money or the public face-image artwork.
-
-## 17. Feature-flag rollout and risks
-
-Roll out in stages: schema dark launch → staff-only read UI → test-mode bidding → test-mode finalization/payment → invited cohort → monitored wider release. The kill switch must stop new bids without corrupting accepted bids or payment reconciliation.
-
-Principal risks are race conditions, clock disagreement, payment/default handling, self-bidding and fraud, auction cancellation disputes, privacy leakage, regulatory/KYC obligations, notification delays, job failure, and conflicts between auction inventory and fixed-price checkout. Auction implementation begins only after product policy, legal scope, provider behavior, operational ownership, and rollback criteria are signed off.
+Run `npm run lint`, `npm run typecheck`, `npx vitest run --exclude ".kilo/**"`, `npm run build`, `git diff --check`, `npm audit`, and `npx dotenv -e .env.local -- npm run db:verify` against the intended branch. Use test-mode accounts and Razorpay test credentials for manual winner checkout; never mark payments paid or place synthetic DB bids.
