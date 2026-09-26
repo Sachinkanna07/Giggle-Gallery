@@ -6,7 +6,7 @@ Giggle Gallery is a full-stack digital art marketplace for discovering original 
 
 This is designed as a connected marketplace system—not only a frontend gallery demo.
 
-[Visit the production site](https://giggle-gallery-pi.vercel.app) · [Explore the source](https://github.com/Sachinkanna07/Giggle-Gallery)
+[Visit the production site](https://giggle-gallery-pi.vercel.app) | [Explore the source](https://github.com/Sachinkanna07/Giggle-Gallery)
 
 > Payments currently run in Razorpay **test mode**. Authentication is required for personal features such as favorites, collections, checkout, orders, and bidding.
 
@@ -51,7 +51,7 @@ The interface follows a dark, cinematic gallery direction: art-first editorial l
 
 ## Architecture
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
   User --> UI[Next.js App Router UI]
   UI --> Actions[Server Actions / Route Handlers]
@@ -60,7 +60,7 @@ flowchart TD
   Core --> Blob[Vercel Blob]
   Core --> Razorpay[Razorpay test mode]
   Core --> Email[Resend]
-\`\`\`
+```
 
 | Layer | Implementation |
 | --- | --- |
@@ -80,15 +80,25 @@ flowchart TD
 
 Auction inventory is deliberately narrow: only a published, single-stock artwork can be scheduled. Scheduling reserves the artwork and prevents a fixed-price checkout from claiming it at the same time.
 
+### Artwork lifecycle
 
-Artwork lifecycle:
-<img width="1074" height="152" alt="mermaid-diagram" src="https://github.com/user-attachments/assets/bfc90252-c560-472d-ac77-7703de64add5" />
+```mermaid
+flowchart LR
+    A[AVAILABLE] --> B[RESERVED]
+    B --> C[SOLD_OUT]
+```
 
+### Auction lifecycle
 
-Auction lifecycle:
-<img width="1945" height="372" alt="mermaid-diagram2" src="https://github.com/user-attachments/assets/6ad64b1d-aec4-41d8-bf19-60b43be16a54" />
-
-
+```mermaid
+flowchart LR
+    D[DRAFT] --> E[SCHEDULED]
+    E --> F[LIVE]
+    F --> G[PAYMENT_PENDING]
+    G --> H[SOLD]
+    G --> I[PAYMENT_EXPIRED]
+    F --> J[UNSOLD]
+```
 
 The server locks and re-checks the auction and artwork before accepting a bid. It calculates the next minimum bid, rejects stale or self-bids, and extends a live auction when a valid bid arrives in the final two minutes. Settlement and winner payment are idempotent; there is no automatic runner-up fallback or reserve-price rule.
 
@@ -104,7 +114,7 @@ The application applies authentication and role-based authorization across buyer
 
 ## Data model
 
-The main persisted entities are \`users\`, \`artist_profiles\`, \`artworks\`, \`artwork_images\`, \`follows\`, \`likes\`, \`saved_artworks\`, \`collections\`, \`orders\`, \`order_items\`, \`payments\`, \`auctions\`, \`auction_bids\`, \`auction_events\`, \`auction_payment_attempts\`, and \`notifications\`.
+The main persisted entities are `users`, `artist_profiles`, `artworks`, `artwork_images`, `follows`, `likes`, `saved_artworks`, `collections`, `orders`, `order_items`, `payments`, `auctions`, `auction_bids`, `auction_events`, `auction_payment_attempts`, and `notifications`.
 
 ## Engineering highlights
 
@@ -123,45 +133,45 @@ The current verified suite contains **214 tests across 28 files**.
 
 Coverage includes authentication and permissions, seller workflows, artwork moderation, cart and checkout rules, payment finalization, follows, notifications, auction bidding and concurrency, auction settlement, payment expiry, and fixed-price regression behavior.
 
-\`\`\`bash
+```bash
 npm run lint
 npm run typecheck
 npx vitest run --exclude ".kilo/**"
 npm run build
 npm audit
 git diff --check
-\`\`\`
+```
 
 ## Local development
 
 Requirements: Node.js 22.x and a PostgreSQL-compatible development database.
 
-\`\`\`bash
+```bash
 git clone https://github.com/Sachinkanna07/Giggle-Gallery.git
 cd "Giggle-Gallery"
 npm install
 Copy-Item .env.example .env.local
 npm run db:migrate
 npm run dev
-\`\`\`
+```
 
-Configure development values in \`.env.local\`; never commit credentials. The environment variable names used by the repository are:
+Configure development values in `.env.local`; never commit credentials. The environment variable names used by the repository are:
 
-\`DATABASE_URL\` · \`AUTH_SECRET\` · \`AUTH_URL\` · \`AUTH_GOOGLE_ID\` · \`AUTH_GOOGLE_SECRET\` · \`NEXT_PUBLIC_APP_URL\` · \`BLOB_READ_WRITE_TOKEN\` · \`RAZORPAY_KEY_ID\` · \`RAZORPAY_KEY_SECRET\` · \`RAZORPAY_WEBHOOK_SECRET\` · \`IDENTITY_HASH_PEPPER\` · \`EMAIL_PROVIDER\` · \`EMAIL_FROM\` · \`RESEND_API_KEY\` · \`GST_RATE_BPS\` · \`AUCTIONS_ENABLED\` · \`AUCTIONS_TEST_MODE\` · \`CRON_SECRET\`
+`DATABASE_URL` | `AUTH_SECRET` | `AUTH_URL` | `AUTH_GOOGLE_ID` | `AUTH_GOOGLE_SECRET` | `NEXT_PUBLIC_APP_URL` | `BLOB_READ_WRITE_TOKEN` | `RAZORPAY_KEY_ID` | `RAZORPAY_KEY_SECRET` | `RAZORPAY_WEBHOOK_SECRET` | `IDENTITY_HASH_PEPPER` | `EMAIL_PROVIDER` | `EMAIL_FROM` | `RESEND_API_KEY` | `GST_RATE_BPS` | `AUCTIONS_ENABLED` | `AUCTIONS_TEST_MODE` | `CRON_SECRET`
 
 For database changes:
 
-\`\`\`bash
+```bash
 npm run db:generate
 npm run db:migrate
 npm run db:verify
-\`\`\`
+```
 
 Use the intended environment and database before applying migrations. Do not reset production data or seed a production database casually.
 
 ## Project structure
 
-\`\`\`text
+```text
 app/
   actions/             Server mutations
   api/                 Route handlers and webhooks
@@ -178,7 +188,7 @@ lib/                   Auth, payments, auction, email, and security logic
 drizzle/               Versioned database migrations
 docs/                  Product and technical notes
 tests/unit/             Vitest regression suite
-\`\`\`
+```
 
 ## Current status
 
@@ -199,3 +209,4 @@ The hard part was not rendering artwork cards. It was coordinating identity, inv
 ## Author
 
 **Sachin Kanna**
+
