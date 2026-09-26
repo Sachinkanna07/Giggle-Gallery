@@ -80,15 +80,15 @@ flowchart TD
 
 Auction inventory is deliberately narrow: only a published, single-stock artwork can be scheduled. Scheduling reserves the artwork and prevents a fixed-price checkout from claiming it at the same time.
 
-\`\`\`text
+
 Artwork lifecycle:
 <img width="1074" height="152" alt="mermaid-diagram" src="https://github.com/user-attachments/assets/bfc90252-c560-472d-ac77-7703de64add5" />
 
 
 Auction lifecycle:
-<img width="1074" height="152" alt="mermaid-diagram" src="https://github.com/user-attachments/assets/03fe5b45-c51f-478c-b303-aae8c0b25eae" />
-          
-\`\`\`
+<img width="1945" height="372" alt="mermaid-diagram2" src="https://github.com/user-attachments/assets/6ad64b1d-aec4-41d8-bf19-60b43be16a54" />
+
+
 
 The server locks and re-checks the auction and artwork before accepting a bid. It calculates the next minimum bid, rejects stale or self-bids, and extends a live auction when a valid bid arrives in the final two minutes. Settlement and winner payment are idempotent; there is no automatic runner-up fallback or reserve-price rule.
 
