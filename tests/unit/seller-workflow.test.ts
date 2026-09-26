@@ -359,16 +359,21 @@ describe("Artwork Upload", () => {
 const ARTWORK_UUID = "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e";
 
 function artworkReviewDatabase(artworkRow: Record<string, unknown> | null) {
-  const selectRow = vi.fn().mockResolvedValue(artworkRow ? [{ slug: "test-artwork", ...artworkRow }] : []);
   const whereSet = vi.fn().mockResolvedValue(undefined);
+  let selection = 0;
   const tx = {
-    select: vi.fn().mockReturnValue({
-      from: () => ({ where: () => ({ limit: () => ({ for: selectRow }) }) }),
-    }),
+    select: vi.fn().mockImplementation(() => ({
+      from: () => ({ where: () => ({ limit: () => {
+        const rows = selection++ === 0 ? (artworkRow ? [{ slug: "test-artwork", artistId: "artist-owned", ...artworkRow }] : []) : [{ userId: "seller-owner" }];
+        const result = Promise.resolve(rows) as Promise<typeof rows> & { for: (mode: string) => Promise<typeof rows> };
+        result.for = vi.fn().mockResolvedValue(rows);
+        return result;
+      } }) }),
+    })),
     update: vi.fn().mockReturnValue({
       set: vi.fn().mockReturnValue({ where: whereSet }),
     }),
-    insert: vi.fn(),
+    insert: vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) }),
     delete: vi.fn(),
   };
   const db = { transaction: vi.fn(async (callback: (value: typeof tx) => Promise<unknown>) => callback(tx)) };
@@ -484,6 +489,7 @@ describe("Seller order fulfillment", () => {
           from: () => ({ where: () => Promise.resolve(itemArtistIds.map((artistId) => ({ artistId }))) }),
         }),
       update: vi.fn().mockReturnValue({ set: updateSet }),
+      insert: vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) }),
     };
     mocks.getDb.mockReturnValue({
       transaction: vi.fn(async (callback: (value: typeof tx) => Promise<unknown>) => callback(tx)),

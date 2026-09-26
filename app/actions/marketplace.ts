@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, count, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/db";
@@ -16,6 +16,7 @@ import {
   collections,
   follows,
   likes,
+  notifications,
   recentlyViewed,
   reviews,
   savedArtworks,
@@ -29,7 +30,7 @@ import { users } from "@/db/schema";
 
 const idSchema = z.string().uuid();
 
-export type MutationResult = { ok: true; active?: boolean; quantity?: number; id?: string } | { ok: false; error: string };
+export type MutationResult = { ok: true; active?: boolean; count?: number; quantity?: number; id?: string } | { ok: false; error: string };
 
 function friendlyError(error: unknown) {
   if (error instanceof Error && error.message === "AUTH_REQUIRED") return "Sign in with Google to continue.";
@@ -59,6 +60,8 @@ export async function toggleLike(artworkId: string): Promise<MutationResult> {
   try {
     const id = idSchema.parse(artworkId);
     const user = await requireUser();
+    const [artwork] = await getDb().select({ status: artworks.status }).from(artworks).where(eq(artworks.id, id)).limit(1);
+    if (!artwork || artwork.status !== "PUBLISHED") return { ok: false, error: "This artwork is not available to like." };
     const active = await toggleRow(likes, user.id, id);
     revalidatePath("/");
     return { ok: true, active };
@@ -71,6 +74,8 @@ export async function toggleSave(artworkId: string): Promise<MutationResult> {
   try {
     const id = idSchema.parse(artworkId);
     const user = await requireUser();
+    const [artwork] = await getDb().select({ status: artworks.status }).from(artworks).where(eq(artworks.id, id)).limit(1);
+    if (!artwork || artwork.status !== "PUBLISHED") return { ok: false, error: "This artwork is not available to save." };
     const active = await toggleRow(savedArtworks, user.id, id);
     revalidatePath("/");
     revalidatePath("/collections");
@@ -85,10 +90,13 @@ export async function toggleFollow(artistId: string): Promise<MutationResult> {
     const id = idSchema.parse(artistId);
     const user = await requireUser();
     const db = getDb();
+    const [artist] = await db.select({ userId: artistProfiles.userId }).from(artistProfiles).where(eq(artistProfiles.id, id)).limit(1);
+    if (!artist || artist.userId === user.id) return { ok: false, error: "You cannot follow this artist." };
     const [existing] = await db.select({ artistId: follows.artistId }).from(follows).where(and(eq(follows.followerId, user.id), eq(follows.artistId, id))).limit(1);
     if (existing) await db.delete(follows).where(and(eq(follows.followerId, user.id), eq(follows.artistId, id)));
     else await db.insert(follows).values({ followerId: user.id, artistId: id }).onConflictDoNothing();
     revalidatePath("/");
+    revalidatePath("/account");
     return { ok: true, active: !existing };
   } catch (error) {
     return { ok: false, error: friendlyError(error) };
@@ -150,7 +158,7 @@ export async function saveTasteProfile(preferences: string[]): Promise<MutationR
     const user = await requireUser();
     const signals = Object.fromEntries(values.map((value, index) => [value, Math.max(20, 90 - index * 11)]));
     const lead = values[0] ?? "Curious";
-    await getDb().insert(userTasteProfiles).values({ userId: user.id, signals, personalityName: `${lead} Explorer`, confidence: "78" }).onConflictDoUpdate({ target: userTasteProfiles.userId, set: { signals, personalityName: `${lead} Explorer`, confidence: "78", updatedAt: new Date() } });
+    await getDb().insert(userTasteProfiles).values({ userId: user.id, signals, personalityName: `${lead} Explorer`, confidence: "0" }).onConflictDoUpdate({ target: userTasteProfiles.userId, set: { signals, personalityName: `${lead} Explorer`, confidence: "0", updatedAt: new Date() } });
     revalidatePath("/");
     revalidatePath("/account");
     return { ok: true };
@@ -164,10 +172,14 @@ export async function recordArtworkView(artworkId: string): Promise<MutationResu
     const id = idSchema.parse(artworkId);
     const user = await requireUser();
     const db = getDb();
-    await Promise.all([
-      db.insert(recentlyViewed).values({ userId: user.id, artworkId: id }).onConflictDoUpdate({ target: [recentlyViewed.userId, recentlyViewed.artworkId], set: { viewedAt: new Date() } }),
-      db.update(artworks).set({ viewCount: sql`${artworks.viewCount} + 1` }).where(eq(artworks.id, id)),
-    ]);
+    await db.transaction(async (tx) => {
+      const [artwork] = await tx.select({ id: artworks.id }).from(artworks).where(and(eq(artworks.id, id), eq(artworks.status, "PUBLISHED"))).limit(1);
+      if (!artwork) return;
+      const now = new Date();
+      const [inserted] = await tx.insert(recentlyViewed).values({ userId: user.id, artworkId: id, viewedAt: now }).onConflictDoNothing().returning({ userId: recentlyViewed.userId });
+      const [refreshed] = inserted ? [] : await tx.update(recentlyViewed).set({ viewedAt: now }).where(and(eq(recentlyViewed.userId, user.id), eq(recentlyViewed.artworkId, id), sql`${recentlyViewed.viewedAt} < ${new Date(now.getTime() - 30 * 60_000)}`)).returning({ userId: recentlyViewed.userId });
+      if (inserted || refreshed) await tx.update(artworks).set({ viewCount: sql`${artworks.viewCount} + 1` }).where(eq(artworks.id, id));
+    });
     return { ok: true };
   } catch (error) {
     return { ok: false, error: friendlyError(error) };
@@ -321,6 +333,7 @@ export async function reviewSellerApplication(applicationId: string, decision: "
           and(eq(users.id, application.userId), eq(users.role, "BUYER")),
         );
       }
+      await tx.insert(notifications).values({ userId: application.userId, type: "SELLER_APPLICATION_REVIEWED", title: validatedDecision === "APPROVED" ? "Seller account approved" : "Seller application updated", message: validatedDecision === "APPROVED" ? "Your seller studio is ready." : "Your seller application has a new review status.", data: { url: "/seller" } });
       return "UPDATED" as const;
     });
     if (outcome === "NOT_FOUND") return { ok: false, error: "Application not found." };
@@ -366,7 +379,7 @@ export async function reviewArtwork(artworkId: string, decision: "PUBLISHED" | "
     const db = getDb();
     const outcome = await db.transaction(async (tx) => {
       const [found] = await tx
-        .select({ id: artworks.id, status: artworks.status })
+        .select({ id: artworks.id, status: artworks.status, artistId: artworks.artistId, title: artworks.title })
         .from(artworks)
         .where(eq(artworks.id, id))
         .limit(1)
@@ -381,6 +394,8 @@ export async function reviewArtwork(artworkId: string, decision: "PUBLISHED" | "
           updatedAt: new Date(),
         })
         .where(eq(artworks.id, id));
+      const [seller] = await tx.select({ userId: artistProfiles.userId }).from(artistProfiles).where(eq(artistProfiles.id, found.artistId)).limit(1);
+      if (seller) await tx.insert(notifications).values({ userId: seller.userId, type: "ARTWORK_REVIEWED", title: validatedDecision === "PUBLISHED" ? "Artwork published" : "Artwork needs revision", message: validatedDecision === "PUBLISHED" ? `${found.title} is now public.` : `${found.title} was not approved for publication.`, data: { url: "/seller" } });
       return "UPDATED" as const;
     });
     if (outcome === "NOT_FOUND") return { ok: false, message: "Artwork not found." };
@@ -408,14 +423,16 @@ export async function unpublishArtwork(artworkId: string): Promise<{ ok: boolean
     const id = idSchema.parse(artworkId);
     const db = getDb();
     const outcome = await db.transaction(async (tx) => {
-      const [found] = await tx.select({ id: artworks.id, slug: artworks.slug, status: artworks.status }).from(artworks).where(eq(artworks.id, id)).limit(1).for("update");
+      const [found] = await tx.select({ id: artworks.id, slug: artworks.slug, status: artworks.status, availability: artworks.availability }).from(artworks).where(eq(artworks.id, id)).limit(1).for("update");
       if (!found) return { status: "NOT_FOUND" as const };
       if (found.status !== "PUBLISHED") return { status: "NOT_PUBLISHED" as const };
+      if (found.availability === "RESERVED") return { status: "AUCTION_RESERVED" as const };
       await tx.update(artworks).set({ status: "REJECTED", publishedAt: null, updatedAt: new Date() }).where(eq(artworks.id, id));
       return { status: "UPDATED" as const, slug: found.slug };
     });
     if (outcome.status === "NOT_FOUND") return { ok: false, message: "Artwork not found." };
     if (outcome.status === "NOT_PUBLISHED") return { ok: false, message: "Only published artworks can be unpublished." };
+    if (outcome.status === "AUCTION_RESERVED") return { ok: false, message: "This artwork is reserved for an auction. Resolve the auction before unpublishing." };
     revalidatePath("/admin");
     revalidatePath("/seller");
     revalidatePath("/");
@@ -432,6 +449,29 @@ export async function unpublishArtworkForm(formData: FormData): Promise<void> {
   await unpublishArtwork(String(formData.get("artworkId") ?? ""));
 }
 
+/** Idempotent follow state for the public artist profile. */
+export async function setArtistFollowing(artistId: string, follow: boolean): Promise<MutationResult> {
+  try {
+    const id = idSchema.parse(artistId);
+    const user = await requireUser();
+    const db = getDb();
+    const [artist] = await db.select({ userId: artistProfiles.userId, slug: artistProfiles.slug }).from(artistProfiles).where(eq(artistProfiles.id, id)).limit(1);
+    if (!artist) return { ok: false, error: "This artist profile is not available." };
+    if (artist.userId === user.id) return { ok: false, error: "You cannot follow your own artist profile." };
+    if (follow) await db.insert(follows).values({ followerId: user.id, artistId: id }).onConflictDoNothing();
+    else await db.delete(follows).where(and(eq(follows.followerId, user.id), eq(follows.artistId, id)));
+    const [[resultingFollow], countRows] = await Promise.all([
+      db.select({ artistId: follows.artistId }).from(follows).where(and(eq(follows.followerId, user.id), eq(follows.artistId, id))).limit(1),
+      db.select({ value: count() }).from(follows).where(eq(follows.artistId, id)),
+    ]);
+    revalidatePath(`/artist/${artist.slug}`);
+    revalidatePath("/account");
+    revalidatePath("/following");
+    revalidatePath("/");
+    return { ok: true, active: Boolean(resultingFollow), count: Number(countRows[0]?.value ?? 0) };
+  } catch (error) { return { ok: false, error: friendlyError(error) }; }
+}
+
 const fulfillmentStatus = z.enum(["PROCESSING", "SHIPPED", "DELIVERED"]);
 
 export async function updateSellerOrderStatus(orderId: string, nextStatus: "PROCESSING" | "SHIPPED" | "DELIVERED"): Promise<{ ok: boolean; message: string }> {
@@ -443,13 +483,14 @@ export async function updateSellerOrderStatus(orderId: string, nextStatus: "PROC
     const outcome = await db.transaction(async (tx) => {
       const [artist] = await tx.select({ id: artistProfiles.id }).from(artistProfiles).where(eq(artistProfiles.userId, seller.id)).limit(1);
       if (!artist) return "NOT_OWNER" as const;
-      const [order] = await tx.select({ status: orders.status, paymentStatus: orders.paymentStatus }).from(orders).where(eq(orders.id, id)).limit(1).for("update");
+      const [order] = await tx.select({ status: orders.status, paymentStatus: orders.paymentStatus, buyerId: orders.buyerId }).from(orders).where(eq(orders.id, id)).limit(1).for("update");
       if (!order || order.paymentStatus !== "PAID") return "NOT_FOUND" as const;
       const items = await tx.select({ artistId: orderItems.artistId }).from(orderItems).where(eq(orderItems.orderId, id));
       if (!items.length || items.some((item) => item.artistId !== artist.id)) return "NOT_OWNER" as const;
       const allowed: Record<string, string> = { CONFIRMED: "PROCESSING", PROCESSING: "SHIPPED", SHIPPED: "DELIVERED" };
       if (allowed[order.status] !== next) return "INVALID_TRANSITION" as const;
       await tx.update(orders).set({ status: next, updatedAt: new Date() }).where(and(eq(orders.id, id), eq(orders.status, order.status)));
+      await tx.insert(notifications).values({ userId: order.buyerId, type: "ORDER_FULFILLMENT", title: next === "SHIPPED" ? "Your art is on its way" : next === "DELIVERED" ? "Your art was delivered" : "Your order is being prepared", message: `Order ${next.toLowerCase()}.`, data: { url: "/orders" } });
       return "UPDATED" as const;
     });
     if (outcome === "NOT_FOUND") return { ok: false, message: "Paid order not found." };

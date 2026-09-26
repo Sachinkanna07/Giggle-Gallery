@@ -57,7 +57,7 @@ export function applyIdentityToToken<T extends SessionTokenClaims>(token: T, ide
   return token;
 }
 
-const protectedPrefixes = ["/account", "/checkout", "/collections", "/orders", "/sell", "/seller", "/admin"];
+const protectedPrefixes = ["/account", "/checkout", "/collections", "/following", "/notifications", "/orders", "/auctions/won", "/sell", "/seller", "/admin"];
 
 function isPathOrChild(path: string, prefix: string): boolean {
   return path === prefix || path.startsWith(`${prefix}/`);

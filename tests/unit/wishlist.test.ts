@@ -41,9 +41,9 @@ describe("wishlist ownership", () => {
     mocks.requireUser.mockResolvedValue({ id: "viewer-123", role: "BUYER" });
     const values = vi.fn().mockReturnValue({ onConflictDoNothing: vi.fn().mockResolvedValue(undefined) });
     mocks.getDb.mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        from: () => ({ where: () => ({ limit: () => Promise.resolve([]) }) }),
-      }),
+      select: vi.fn()
+        .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: () => Promise.resolve([{ status: "PUBLISHED" }]) }) }) })
+        .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: () => Promise.resolve([]) }) }) }),
       insert: vi.fn().mockReturnValue({ values }),
     });
 
