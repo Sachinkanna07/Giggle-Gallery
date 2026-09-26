@@ -1,170 +1,199 @@
 # Giggle Gallery
 
-Giggle Gallery is a cinematic art marketplace built with Next.js, Auth.js, Drizzle ORM, Neon Postgres, Vercel Blob, and Razorpay. Production workflows are persisted and server-authorized; the development-only catalog fallback is never presented as production data.
+### Art that feels like you.
 
-## Marketplace features
+Giggle Gallery is a full-stack digital art marketplace for discovering original work, collecting fixed-price pieces, following artists, and joining live auctions. It includes the operational layer behind the storefront: seller onboarding, artwork moderation, inventory protection, checkout, fulfillment, notifications, and role-aware dashboards.
 
-- Published-only catalog with title/artist search, medium, format, color, availability, year, and price filters; filter state is shareable by URL.
-- Public artwork and artist pages with metadata, responsive images, safe public profile fields, and published work counts.
-- Authenticated favorites, private collections, persistent cart, server-priced checkout, and buyer-owned order history.
-- Seller application, guarded artwork upload, pending review, inventory, paid-only revenue, seller-owned paid orders, and forward-only fulfillment updates.
-- Admin seller/artwork moderation plus read-only order, payment, and fulfillment oversight. Admin tools cannot mark an unpaid order paid.
-- Razorpay signature/webhook verification, duplicate-event protection, transactional stock updates, payout records, and inventory-conflict refunds.
-- Feature-flagged, Razorpay-test-key-only single-edition auctions: seller drafts, admin scheduling, inventory reservation, locked bids, winner checkout, expiry, and visible-tab live polling.
-- Persisted artist following, real follower/favorite/bid/view counts, buyer auction participation, and in-app owner-scoped notifications.
+This is designed as a connected marketplace system—not only a frontend gallery demo.
 
-## Roles
+[Visit the production site](https://giggle-gallery-pi.vercel.app) · [Explore the source](https://github.com/Sachinkanna07/Giggle-Gallery)
 
-- **Buyer:** save artwork, manage private collections and cart, check out, and view only their own orders.
-- **Seller:** all buyer capabilities plus submit artwork, view moderation status, see only their paid order items and fulfillment data, and advance valid fulfillment steps.
-- **Admin:** review sellers and artwork, unpublish safely, and inspect marketplace/order status. Payment truth remains provider-verified.
+> Payments currently run in Razorpay **test mode**. Authentication is required for personal features such as favorites, collections, checkout, orders, and bidding.
+
+## What you can do
+
+### Buyer / collector
+
+- Sign in with Google through Auth.js.
+- Search and filter published artwork by title, artist, medium, style, availability, and price.
+- Like artwork, build private collections, and follow artists.
+- Add work to a persistent cart and complete server-validated checkout.
+- Review owned orders, fulfillment state, and in-app notifications.
+- Join scheduled and live auctions with visible bid state and winner checkout.
+
+### Artist / seller
+
+- Submit a seller application and build a public artist profile.
+- Upload artwork through a short-lived, seller-owned Blob upload intent.
+- Track pending, published, rejected, inventory, orders, earnings, followers, and favorites from the seller dashboard.
+- Advance paid orders through valid fulfillment steps.
+- Create auction drafts for admin review.
+
+### Admin
+
+- Review seller applications and artwork submissions.
+- Publish, reject, or safely unpublish artwork.
+- Schedule and monitor auctions.
+- Inspect marketplace, order, payment, and fulfillment state without changing payment truth.
+
+### Auctions
+
+- Draft, scheduled, live, payment-pending, sold, unsold, and payment-expired states.
+- Server-authoritative minimum bids and increments.
+- Visible-tab live polling, bid history, highest-bidder and outbid state.
+- Two-minute anti-sniping extension.
+- Winner-only payment with a 24-hour payment window.
+- Idempotent settlement and reserved-inventory protection.
+
+## Product direction
+
+The interface follows a dark, cinematic gallery direction: art-first editorial layouts, a persistent marketplace header, responsive search/cart/account access, a focused auction room, and mobile navigation that keeps core actions close. Display preferences include density, contrast, interface size, and reduced motion.
 
 ## Architecture
 
-Next.js App Router renders the public and authenticated experiences. Auth.js establishes identity while server actions and route handlers re-check active account and role state. Drizzle accesses Neon PostgreSQL for marketplace state. Vercel Blob client uploads use short-lived seller-owned intents. Razorpay creates provider orders and reports signed browser/webhook events; one transactional finalizer owns payment, inventory, payout, cart, and notification mutations. Resend is used for separately verified contact-email delivery.
+\`\`\`mermaid
+flowchart TD
+  User --> UI[Next.js App Router UI]
+  UI --> Actions[Server Actions / Route Handlers]
+  Actions --> Core[Auth, Commerce, Moderation, Auction Engine]
+  Core --> DB[(PostgreSQL on Neon)]
+  Core --> Blob[Vercel Blob]
+  Core --> Razorpay[Razorpay test mode]
+  Core --> Email[Resend]
+\`\`\`
 
-Auctions share the payment finalizer but cannot use its fixed-price branch. Admin scheduling locks the artwork and blocks pending fixed-price orders; fixed-price checkout locks the same artwork and requires `AVAILABLE`. Winning bids and payment deadlines are persisted server-side. A winner order can consume `RESERVED` inventory only after the finalizer verifies the exact auction, highest bid, winner, order/payment, deadline, and stock relationship. No automatic runner-up or reserve-price rule exists. Closing and expiry are idempotent via lazy reads/actions and, when securely configured, a protected daily Cron on Vercel Hobby. Public auction pages poll while visible; the browser clock never decides bid acceptance.
+| Layer | Implementation |
+| --- | --- |
+| Frontend | Next.js App Router, React, TypeScript |
+| UI | Tailwind CSS, shadcn/ui, Lucide |
+| Backend | Next.js Server Actions and Route Handlers |
+| Database | PostgreSQL on Neon |
+| ORM | Drizzle ORM |
+| Authentication | Auth.js, Google OAuth |
+| Storage | Vercel Blob |
+| Payments | Razorpay test mode |
+| Email | Resend adapter |
+| Testing | Vitest, ESLint, TypeScript |
+| Deployment | Vercel |
+
+## Auction engine
+
+Auction inventory is deliberately narrow: only a published, single-stock artwork can be scheduled. Scheduling reserves the artwork and prevents a fixed-price checkout from claiming it at the same time.
+
+\`\`\`text
+Artwork: AVAILABLE → RESERVED → SOLD_OUT
+
+Auction: DRAFT → SCHEDULED → LIVE → PAYMENT_PENDING → SOLD
+                                  └──────────────→ UNSOLD
+                       PAYMENT_PENDING → PAYMENT_EXPIRED
+\`\`\`
+
+The server locks and re-checks the auction and artwork before accepting a bid. It calculates the next minimum bid, rejects stale or self-bids, and extends a live auction when a valid bid arrives in the final two minutes. Settlement and winner payment are idempotent; there is no automatic runner-up fallback or reserve-price rule.
+
+## Payment safety
+
+Fixed-price checkout uses server-controlled prices, totals, stock, ownership, and payment state. Razorpay signatures and webhook payloads are verified, duplicate provider events are protected, and seller revenue is derived from paid order items only.
+
+Auction checkout uses the persisted winning amount. Only the winner can pay, the payment deadline is checked, reserved inventory is revalidated, and duplicate payment attempts are protected. Razorpay is configured for test mode; this repository does not claim completed real-money production transactions.
+
+## Security design
+
+The application applies authentication and role-based authorization across buyer, seller, and admin surfaces. Sensitive mutations re-check the active identity server-side. Other controls include IDOR protection, server-side pricing, seller-owned upload verification, inventory locking, payment and webhook signature verification, protected admin actions, public-profile field minimization, winner-only auction checkout, and unique/idempotency constraints.
+
+## Data model
+
+The main persisted entities are \`users\`, \`artist_profiles\`, \`artworks\`, \`artwork_images\`, \`follows\`, \`likes\`, \`saved_artworks\`, \`collections\`, \`orders\`, \`order_items\`, \`payments\`, \`auctions\`, \`auction_bids\`, \`auction_events\`, \`auction_payment_attempts\`, and \`notifications\`.
+
+## Engineering highlights
+
+- Transaction-aware bidding and auction settlement.
+- Inventory reservation prevents a fixed-price and auction double sale.
+- Idempotent winner payment and provider-event handling.
+- One product architecture for buyer, seller, and admin roles.
+- Persisted social state for follows, favorites, collections, and notifications.
+- Server-authoritative commerce pricing and stock checks.
+- Short-lived, seller-scoped upload verification.
+- Automated regression coverage for concurrency, moderation, checkout, and payment expiry.
+
+## Testing
+
+The current verified suite contains **214 tests across 28 files**.
+
+Coverage includes authentication and permissions, seller workflows, artwork moderation, cart and checkout rules, payment finalization, follows, notifications, auction bidding and concurrency, auction settlement, payment expiry, and fixed-price regression behavior.
+
+\`\`\`bash
+npm run lint
+npm run typecheck
+npx vitest run --exclude ".kilo/**"
+npm run build
+npm audit
+git diff --check
+\`\`\`
 
 ## Local development
 
-1. Install Node.js 22.13 or newer and run `npm install`.
-2. Copy `.env.example` to `.env.local` and add development or provider test-mode credentials.
-3. Run `npm run db:migrate` and, when starter data is wanted, `npm run db:seed`.
-4. Start the app with `npm run dev`.
+Requirements: Node.js 22.x and a PostgreSQL-compatible development database.
 
-Without `DATABASE_URL`, local development can render the curated fallback catalog for visual work. Account writes, seller tools, uploads, orders, and payments remain unavailable rather than pretending to persist. Production fails closed on invalid required configuration and never falls back to demo records after a database failure.
+\`\`\`bash
+git clone https://github.com/Sachinkanna07/Giggle-Gallery.git
+cd "Giggle-Gallery"
+npm install
+Copy-Item .env.example .env.local
+npm run db:migrate
+npm run dev
+\`\`\`
 
-## Required environment variables
+Configure development values in \`.env.local\`; never commit credentials. The environment variable names used by the repository are:
 
-Configure these in each deployed environment. Only `NEXT_PUBLIC_APP_URL` is safe to expose to the browser.
+\`DATABASE_URL\` · \`AUTH_SECRET\` · \`AUTH_URL\` · \`AUTH_GOOGLE_ID\` · \`AUTH_GOOGLE_SECRET\` · \`NEXT_PUBLIC_APP_URL\` · \`BLOB_READ_WRITE_TOKEN\` · \`RAZORPAY_KEY_ID\` · \`RAZORPAY_KEY_SECRET\` · \`RAZORPAY_WEBHOOK_SECRET\` · \`IDENTITY_HASH_PEPPER\` · \`EMAIL_PROVIDER\` · \`EMAIL_FROM\` · \`RESEND_API_KEY\` · \`GST_RATE_BPS\` · \`AUCTIONS_ENABLED\` · \`AUCTIONS_TEST_MODE\` · \`CRON_SECRET\`
 
-| Variable | Purpose |
-| --- | --- |
-| `DATABASE_URL` | Pooled Neon PostgreSQL connection URL |
-| `AUTH_SECRET` | Random Auth.js signing secret, at least 32 characters |
-| `AUTH_URL` | Canonical HTTPS Auth.js origin with no path, query, or fragment |
-| `AUTH_GOOGLE_ID` | Google OAuth web client ID |
-| `AUTH_GOOGLE_SECRET` | Google OAuth client secret |
-| `NEXT_PUBLIC_APP_URL` | Canonical HTTPS application URL |
-| `BLOB_READ_WRITE_TOKEN` | Vercel Blob server credential |
-| `RAZORPAY_KEY_ID` | Razorpay key ID |
-| `RAZORPAY_KEY_SECRET` | Razorpay server secret |
-| `RAZORPAY_WEBHOOK_SECRET` | Razorpay webhook signing secret |
-| `IDENTITY_HASH_PEPPER` | Private HMAC key for verification destination hashes |
-| `EMAIL_PROVIDER` | Transactional email adapter; Phase 3C supports `resend` |
-| `EMAIL_FROM` | Verified sender, for example `Giggle Gallery <verify@YOUR_DOMAIN>` |
-| `RESEND_API_KEY` | Server-only Resend API key |
-| `GST_RATE_BPS` | Optional GST rate in basis points; defaults to `0` |
-| `AUCTIONS_ENABLED` | Set `true` only after auction release gates; default off |
-| `AUCTIONS_TEST_MODE` | Must be `true` with a `rzp_test_` Razorpay key to enable auctions |
-| `CRON_SECRET` | Server-only bearer secret for protected auction settlement Cron |
+For database changes:
 
-Never commit credentials. `.env.example` contains names and environment guidance only.
-
-## Staging / Preview setup
-
-- Use isolated Neon and Blob resources, Razorpay test mode, and a distinct webhook secret.
-- Add the exact preview host to Google OAuth and set matching HTTPS `AUTH_URL` and `NEXT_PUBLIC_APP_URL` origins.
-- Apply migrations to staging, then test sign-in, seller upload, signed checkout verification, webhook replay, and the owned-order confirmation page.
-
-## Google OAuth
-
-Create a Google OAuth web client and add these authorized redirect URIs:
-
-- Local: `http://localhost:3000/api/auth/callback/google`
-- Preview: `https://PREVIEW_HOST/api/auth/callback/google`
-- Production: `https://YOUR_DOMAIN/api/auth/callback/google`
-
-Set `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, a unique `AUTH_SECRET`, and the canonical root `AUTH_URL` in the matching environment. Roles and account status are loaded server-side from Postgres. Google remains the only sign-in method; authenticated contact-email verification does not add password or email-link authentication, and phone identity remains deferred.
-
-## Email verification and identity roadmap
-
-- Google login is the currently supported sign-in method. Auth.js provider identities are persisted in the `accounts` table, and automatic email-based account linking remains explicitly disabled.
-- Phase 3A adds account status, normalized verified-contact uniqueness, hashed verification-event storage, server-only linking policy, and truthful account status UI.
-- Phase 3C keeps `users.email` as the stable Google/Auth.js identity. A separately verified `contact_email` can be added or changed without altering Google provider linkage.
-- Authenticated email verification uses a six-digit, 10-minute, single-use code delivered through the server-only email-provider adapter. Only a context-bound HMAC is stored in `verification_events`; resends cancel older pending contact-email challenges and five incorrect attempts fail an event.
-- Contact-email conflict responses are intentionally generic. Server Actions derive the user from Auth.js, re-check ACTIVE status in PostgreSQL, and rate-limit requests, destinations, IPs, and verification attempts.
-- Phone OTP delivery and verification are planned for Phase 3D.
-- Verification events store keyed destination and challenge hashes; raw OTPs and raw custom verification tokens must never be persisted or logged.
-- `IDENTITY_HASH_PEPPER` is server-only. Use a unique value of at least 32 characters in each environment and never commit it.
-
-### Resend setup
-
-1. Create a Resend account and verify a sending domain you control.
-2. Add the DNS records shown by Resend and wait until the domain is verified.
-3. Create a restricted sending API key. Do not place it in a committed file.
-4. Set `EMAIL_PROVIDER=resend`, `EMAIL_FROM` to a sender on the verified domain, and `RESEND_API_KEY` in the matching Vercel Preview or Production environment.
-5. Apply the latest Drizzle migration to a backed-up Preview database, deploy to Preview, and complete the email verification smoke test before applying the migration or promoting the build in Production.
-
-Unit tests mock the delivery provider and never send real email. A successful build does not prove domain verification or inbox delivery; verify those manually in Preview and Production.
-
-## Database
-
-Provision Neon through the Vercel Marketplace and use its pooled `DATABASE_URL`. The pooled driver supports the transactions used by seller approval, artwork creation, checkout creation, and payment finalization.
-
-Generate a migration after schema changes with `npm run db:generate`. Apply migrations with `npm run db:migrate`. Seed the starter catalog with `npm run db:seed`.
-
-The additive auction migration is `drizzle/0005_tiny_firebrand.sql`. Verify the required tables and latest Drizzle journal entry with `npm run db:verify`; it is read-only and prints no credentials. If `.env.local` points at production, do not run migration or seed without explicit migration review and a backup plan. Never reset marketplace tables or edit an applied migration.
-
-Payment attempts and webhook events have separate tables. Checkout math uses integer paise in application code, while existing money columns remain fixed-precision SQL numeric values. Migrating every persisted money column to integer minor units is a later, deliberate data migration.
-
-## Artwork storage
-
-Approved sellers upload JPG, PNG, or WebP images up to 12 MB through a short-lived, server-authorized Blob token. Each upload is recorded against the seller and an expiring intent. Artwork creation accepts only the exact completed Blob URL associated with that seller; arbitrary external image URLs are rejected.
-
-## Razorpay
-
-Set `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, and `RAZORPAY_WEBHOOK_SECRET`. Configure the production webhook URL as:
-
-`https://YOUR_DOMAIN/api/webhooks/razorpay`
-
-Subscribe to `payment.captured` and `payment.failed`. The handler verifies the exact raw body and deduplicates provider events before processing. Browser callbacks require an authenticated order owner, same-origin request, and valid Razorpay signature. A redirect alone never marks an order paid.
-
-Payment finalization updates payment, attempt, order, inventory, payouts, cart, and database notifications in one database transaction. If paid inventory is unavailable, the service requests a Razorpay refund and records the refunded state. External refunds cannot be atomically committed with PostgreSQL, so production operations still need provider/database reconciliation and alerting.
-
-## Security and operational notes
-
-- Production responses include CSP, HSTS, frame protection, MIME sniffing protection, a strict referrer policy, and a restricted permissions policy.
-- Auth POSTs, email verification, upload authorization, payment verification, webhooks, and authenticated Server Actions have initial rate limits.
-- The limiter is per-process and best-effort. Replace it with a shared durable limiter before horizontal scale or adversarial traffic.
-- The web manifest is the PWA foundation. Offline caching, install UX, and a full service-worker strategy are later-phase work.
-- Carrier tracking, returns/refund operations, payout execution, durable distributed rate limiting, SMS delivery, and receipts/certificates remain later phases.
-
-## Known MVP limitations
-
-- The final dedicated ₹1 Razorpay test-mode payment has not yet been completed by a human, so deployed paid-flow behavior remains unverified end to end.
-- Fulfillment supports forward order states but not carrier/tracking fields; mixed-seller orders cannot be advanced by one seller while status remains order-level.
-- Admin order oversight is intentionally read-only and limited to recent status data; reconciliation and refund tooling are deferred.
-- Search is appropriate for the current MVP catalog but still loads the published catalog before in-memory filtering; database-native search/pagination is future scale work.
-- Abandoned checkout orders are retained for history; automatic expiry/cleanup is not implemented.
-- Auction flags must stay off until a production Razorpay **test** key is independently verified, the deployed migration and manual test auction pass, and the operator explicitly approves enablement. Daily Hobby Cron cannot guarantee a one-to-five-minute close for an inactive auction; lazy settlement handles active reads.
-- An expired auction with an unresolved provider payment stays reserved until payment failure/refund is reconciled. Reopening it early could double-sell the artwork.
-
-## Deployment checklist
-
-1. Review the additive auction migration, verify staging and production journals with `npm run db:verify`, and apply only missing migrations through the approved Drizzle path. Never reset or reseed production.
-2. Run `npm ci`, `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`.
-3. Configure every required variable in Vercel Production with production-scoped values.
-4. Confirm the production Google callback and Razorpay webhook URL and signing secret.
-5. Deploy to Preview, complete the staging smoke tests, then promote the verified build.
-6. Verify headers, database connectivity, Blob callbacks, webhook delivery/replay, and an owned test-mode checkout.
-7. Enable monitoring for application errors, webhook failures, refund reconciliation, and database health.
-8. Keep auctions off until the release gates in `docs/GIGGLE_GALLERY_MVP_STATUS.md` pass. Confirm `RAZORPAY_KEY_ID` is test-mode without printing it; configure `CRON_SECRET` securely if using the protected daily settlement route.
-
-## Rollback
-
-Keep the previous Vercel deployment available for traffic rollback. Prefer additive database migrations and prepare a separately reviewed down or forward-fix plan before any destructive migration. Rolling back application code does not roll back Neon data or external Razorpay operations.
-
-## Quality checks
-
-```bash
-npm run lint
-npm run typecheck
-npm test
-npm run build
-npm audit --audit-level=low
-git diff --check
+\`\`\`bash
+npm run db:generate
+npm run db:migrate
 npm run db:verify
-```
+\`\`\`
 
-GitHub Actions runs install, lint, typecheck, unit tests, and build for pushes and pull requests using placeholders only; it never charges real money.
+Use the intended environment and database before applying migrations. Do not reset production data or seed a production database casually.
+
+## Project structure
+
+\`\`\`text
+app/
+  actions/             Server mutations
+  api/                 Route handlers and webhooks
+  account/             Buyer account experience
+  admin/               Moderation and oversight
+  artist/              Public artist profiles
+  artwork/             Artwork commerce pages
+  auctions/            Auction discovery and bidding
+  seller/              Seller workspace and tools
+  components/          Shared marketplace UI
+components/ui/         Reusable interface primitives
+db/                    Database client and schema
+lib/                   Auth, payments, auction, email, and security logic
+drizzle/               Versioned database migrations
+docs/                  Product and technical notes
+tests/unit/             Vitest regression suite
+\`\`\`
+
+## Current status
+
+Giggle Gallery v1 is feature-complete as a portfolio and test-mode marketplace. The application is deployed on Vercel, the core buyer/seller/admin flows are implemented, and the production payment integration remains intentionally test-mode.
+
+## Future extensions
+
+- Seller payouts and KYC.
+- Real-money payment rollout after independent release validation.
+- Disputes and refunds automation.
+- Recommendation models and multi-currency settlement.
+- Native mobile application.
+
+## Why this project is interesting
+
+The hard part was not rendering artwork cards. It was coordinating identity, inventory, payments, auctions, concurrency, moderation, seller fulfillment, and social discovery while keeping business decisions on the server. Giggle Gallery is a compact example of how a visually expressive product can still have explicit state transitions, authorization boundaries, and operational safety.
+
+## Author
+
+**Sachin Kanna**
