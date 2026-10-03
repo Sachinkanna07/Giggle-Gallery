@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./public/readme/giggle-gallery-banner.png" alt="Giggle Gallery banner" width="100%" />
+  <img src="./assets/giggle-gallery-banner.png" alt="Giggle Gallery banner" width="100%" />
 </p>
 
 # Giggle Gallery
