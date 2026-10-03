@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./public/readme/giggle-gallery-banner.png" alt="Giggle Gallery banner" width="100%" />
+</p>
+
 # Giggle Gallery
 
 ### Art that feels like you.
