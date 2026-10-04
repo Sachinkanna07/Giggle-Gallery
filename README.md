@@ -11,6 +11,14 @@ This is designed as a connected marketplace system—not only a frontend gallery
 
 > Payments currently run in Razorpay **test mode**. Authentication is required for personal features such as favorites, collections, checkout, orders, and bidding.
 
+## Quick overview
+
+- **Buyer experience:** discovery, favorites, collections, cart, checkout, orders, and live auctions.
+- **Seller experience:** onboarding, artwork uploads, moderation, inventory, fulfillment, and earnings.
+- **Admin experience:** seller/artwork moderation, auction scheduling, and marketplace oversight.
+- **Engineering focus:** server-authoritative commerce, inventory safety, payment verification, concurrency handling, and automated tests.
+- **Stack:** Next.js · TypeScript · PostgreSQL · Drizzle ORM · Auth.js · Vercel Blob · Razorpay
+
 ## What you can do
 
 ### Buyer / collector
