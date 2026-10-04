@@ -217,5 +217,5 @@ The hard part was not rendering artwork cards. It was coordinating identity, inv
 
 ## Author
 
-**Sachin Kanna**
+**Sachin Kanna M**
 
