@@ -1,7 +1,14 @@
+<div align="center">
 
-# Giggle Gallery
+# 🎨 Giggle Gallery
 
 ### Art that feels like you.
+
+**Discover art · Meet artists · Explore auctions**
+
+[Visit the site](https://giggle-gallery-pi.vercel.app) · [Jump to local development](#local-development) · [Explore the architecture](#architecture)
+
+</div>
 
 Giggle Gallery is a full-stack digital art marketplace for discovering original work, collecting fixed-price pieces, following artists, and joining live auctions. It includes the operational layer behind the storefront: seller onboarding, artwork moderation, inventory protection, checkout, fulfillment, notifications, and role-aware dashboards.
 
