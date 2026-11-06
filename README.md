@@ -1,30 +1,22 @@
-<div align="center">
+# Giggle Gallery
 
-# 🎨 Giggle Gallery
+An art marketplace where collectors discover work, artists submit pieces for review, and approved listings can sell at a fixed price or at auction. Built with Next.js, TypeScript and PostgreSQL.
 
-### Art that feels like you.
+[Open the gallery](https://giggle-gallery-pi.vercel.app) · [Read the case study](docs/PORTFOLIO_CASE_STUDY.md) · [Run locally](#local-development) · [Trace an auction](#auction-engine)
 
-**Discover art · Meet artists · Explore auctions**
+[![Giggle Gallery project cover showing the dark storefront and a moonlit seascape](publicreadmegiggle-gallery-banner.png)](https://giggle-gallery-pi.vercel.app)
 
-[Visit the site](https://giggle-gallery-pi.vercel.app) · [Jump to local development](#local-development) · [Explore the architecture](#architecture)
+## What happens when two people want the same piece?
 
-</div>
+A seller submits a work, an administrator approves it, and the piece enters the public catalog. Scheduling an eligible single-stock piece for auction reserves it. Fixed-price checkout then has to respect that reservation. A winning bidder gets a 24-hour payment window. The paid order and inventory update share a finalization path for browser callbacks and provider webhooks.
 
-Giggle Gallery is a full-stack digital art marketplace for discovering original work, collecting fixed-price pieces, following artists, and joining live auctions. It includes the operational layer behind the storefront: seller onboarding, artwork moderation, inventory protection, checkout, fulfillment, notifications, and role-aware dashboards.
+| Follow the code | Start here |
+| --- | --- |
+| How a late bid extends a sale | [Bid rules](lib/auctions/rules.ts) · [Rule tests](tests/unit/auction-rules.test.ts) |
+| How auction settlement handles inventory | [Auction lifecycle](lib/auctions/lifecycle.ts) · [Lifecycle tests](tests/unit/auction-lifecycle.test.ts) |
+| How payment callbacks handle retries | [Payment finalization](lib/payments/finalize.ts) · [Duplicate webhook tests](tests/unit/webhook-duplicate.test.ts) |
 
-This is designed as a connected marketplace system—not only a frontend gallery demo.
-
-[Visit the production site](https://giggle-gallery-pi.vercel.app) | [Explore the source](https://github.com/Sachinkanna07/Giggle-Gallery)
-
-> Payments currently run in Razorpay **test mode**. Authentication is required for personal features such as favorites, collections, checkout, orders, and bidding.
-
-## Quick overview
-
-- **Buyer experience:** discovery, favorites, collections, cart, checkout, orders, and live auctions.
-- **Seller experience:** onboarding, artwork uploads, moderation, inventory, fulfillment, and earnings.
-- **Admin experience:** seller/artwork moderation, auction scheduling, and marketplace oversight.
-- **Engineering focus:** server-authoritative commerce, inventory safety, payment verification, concurrency handling, and automated tests.
-- **Stack:** Next.js · TypeScript · PostgreSQL · Drizzle ORM · Auth.js · Vercel Blob · Razorpay
+Payments use Razorpay test mode. Bidding requires a signed-in user and a deployment with the [auction feature enabled](lib/auctions/feature-flag.ts).
 
 ## What you can do
 
@@ -145,7 +137,7 @@ The main persisted entities are `users`, `artist_profiles`, `artworks`, `artwork
 
 ## Testing
 
-The current verified suite contains **214 tests across 28 files**.
+The [Vitest suite](tests/unit) includes focused checks for payment, auction and inventory edge cases.
 
 Coverage includes authentication and permissions, seller workflows, artwork moderation, cart and checkout rules, payment finalization, follows, notifications, auction bidding and concurrency, auction settlement, payment expiry, and fixed-price regression behavior.
 
@@ -160,18 +152,22 @@ git diff --check
 
 ## Local development
 
-Requirements: Node.js 22.x and a PostgreSQL-compatible development database.
+Requirements are Node.js 22.x and a development database compatible with the Neon PostgreSQL driver.
 
-```bash
+```sh
 git clone https://github.com/Sachinkanna07/Giggle-Gallery.git
-cd "Giggle-Gallery"
-npm install
-Copy-Item .env.example .env.local
-npm run db:migrate
+cd Giggle-Gallery
+npm ci
+```
+
+Copy [.env.example](.env.example) to `.env.local` and fill in the development configuration for the providers you want to exercise. Load that file explicitly for migrations, then launch Next.js.
+
+```sh
+npx dotenv -e .env.local -- npm run db:migrate
 npm run dev
 ```
 
-Configure development values in `.env.local`; never commit credentials. The environment variable names used by the repository are:
+The environment variables used by the repository are:
 
 `DATABASE_URL` | `AUTH_SECRET` | `AUTH_URL` | `AUTH_GOOGLE_ID` | `AUTH_GOOGLE_SECRET` | `NEXT_PUBLIC_APP_URL` | `BLOB_READ_WRITE_TOKEN` | `RAZORPAY_KEY_ID` | `RAZORPAY_KEY_SECRET` | `RAZORPAY_WEBHOOK_SECRET` | `IDENTITY_HASH_PEPPER` | `EMAIL_PROVIDER` | `EMAIL_FROM` | `RESEND_API_KEY` | `GST_RATE_BPS` | `AUCTIONS_ENABLED` | `AUCTIONS_TEST_MODE` | `CRON_SECRET`
 
@@ -179,8 +175,8 @@ For database changes:
 
 ```bash
 npm run db:generate
-npm run db:migrate
-npm run db:verify
+npx dotenv -e .env.local -- npm run db:migrate
+npx dotenv -e .env.local -- npm run db:verify
 ```
 
 Use the intended environment and database before applying migrations. Do not reset production data or seed a production database casually.
@@ -217,10 +213,6 @@ Giggle Gallery v1 is feature-complete as a portfolio and test-mode marketplace. 
 - Disputes and refunds automation.
 - Recommendation models and multi-currency settlement.
 - Native mobile application.
-
-## Why this project is interesting
-
-The hard part was not rendering artwork cards. It was coordinating identity, inventory, payments, auctions, concurrency, moderation, seller fulfillment, and social discovery while keeping business decisions on the server. Giggle Gallery is a compact example of how a visually expressive product can still have explicit state transitions, authorization boundaries, and operational safety.
 
 ## Author
 
